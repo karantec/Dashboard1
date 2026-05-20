@@ -566,12 +566,7 @@ export default function OrdersPage() {
           >
             {refreshing ? "⟳ Refreshing..." : "⟳ Refresh Now"}
           </button>
-          <button style={{
-            background: "linear-gradient(135deg, #10B981, #34D399)", color: "#fff",
-            border: "none", borderRadius: 9, padding: "9px 18px",
-            fontSize: 13, fontWeight: 700, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(16,185,129,0.3)", display: "flex", alignItems: "center", gap: 6,
-          }}>+ Export Orders</button>
+          
         </div>
       </div>
 

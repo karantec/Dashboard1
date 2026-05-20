@@ -28,20 +28,8 @@ import {
   DialogActions,
   Tab,
   Tabs,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tooltip,
 } from "@mui/material";
-// Remove the icons import - comment out or delete this line
-// import {
-//   Refresh as RefreshIcon,
-//   Block as BlockIcon,
-//   LocalOffer as CouponIcon,
-// } from "@mui/icons-material";
 
 import {
   getAllWholesalers,
@@ -350,7 +338,6 @@ export default function WholesaleCouponManager() {
       <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
         <Tab label="Single Apply" />
         <Tab label="Bulk Apply" />
-        <Tab label="Application History" />
       </Tabs>
 
       {/* Tab 1: Single Apply */}
@@ -459,7 +446,6 @@ export default function WholesaleCouponManager() {
                     onClick={() => {
                       setSelectedWholesaler("");
                       setSelectedCoupon("");
-                      setApplicationHistory([]);
                     }}
                     sx={secondaryButtonStyle}
                   >
@@ -610,75 +596,6 @@ export default function WholesaleCouponManager() {
                 {applying ? <CircularProgress size={24} /> : `Apply to ${bulkWholesalers.length} Wholesaler(s)`}
               </Button>
             </Box>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tab 3: All Applications */}
-      {activeTab === 2 && (
-        <Card sx={{ borderRadius: 3 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight="600" mb={2}>
-              All Coupon Applications
-            </Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: "#f9fafb" }}>
-                    <TableCell>Wholesaler</TableCell>
-                    <TableCell>Coupon Code</TableCell>
-                    <TableCell>Discount</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Applied Date</TableCell>
-                    <TableCell>Expiry Date</TableCell>
-                    <TableCell>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {applicationHistory.map((app) => {
-                    const wholesaler = wholesalers.find(w => w._id === app.wholesaler);
-                    const statusInfo = getCouponStatusInfo(app.status, app.expiryDate);
-                    const isExpired = isCouponExpired(app.expiryDate);
-                    return (
-                      <TableRow key={app._id}>
-                        <TableCell>{wholesaler?.storeName || app.wholesaler}</TableCell>
-                        <TableCell>
-                          <Chip label={app.couponCode} size="small" sx={{ bgcolor: "#fee2e2", color: "#dc2626" }} />
-                        </TableCell>
-                        <TableCell>{formatCouponDiscount(app)}</TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={statusInfo.text} 
-                            size="small"
-                            color={statusInfo.color}
-                          />
-                        </TableCell>
-                        <TableCell>{new Date(app.appliedAt).toLocaleDateString()}</TableCell>
-                        <TableCell>{new Date(app.expiryDate).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          {app.status === "ACTIVE" && !isExpired && (
-                            <Tooltip title="Revoke">
-                              <IconButton size="small" onClick={() => openRevokeDialog(app)}>
-                                🚫
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {applicationHistory.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} align="center">
-                        <Typography color="text.secondary" py={4}>
-                          No coupon applications found. Select a wholesaler to view history.
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
           </CardContent>
         </Card>
       )}
