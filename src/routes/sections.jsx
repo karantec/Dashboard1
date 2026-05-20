@@ -9,6 +9,7 @@ import DashboardLayout from 'src/layouts/dashboard';
 import ProtectedRoute from './ProtectedRoute';
 import CoupanPage from 'src/pages/Coupan';
 import WholeSalePage from 'src/pages/WholeSale';
+import WholesaleCouponManager from 'src/pages/GeneratewholSaleCoupan';
 
 
 // Import pages
@@ -46,6 +47,8 @@ export default function Router() {
         { element: <IndexPage />, index: true },
         { path: 'user', element: <UserPage /> },
         { path: 'Banner', element: <Banner /> },
+
+        { path: 'Generatewholesalecoupan', element: <WholesaleCouponManager /> },
         { path: 'Category', element: <Category /> },
         { path: 'subcategory', element: <SubCategory /> },
         { path: 'products', element: <Product /> },

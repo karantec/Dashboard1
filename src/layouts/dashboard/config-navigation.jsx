@@ -24,6 +24,11 @@ const navConfig = [
     icon: icon('ic_user'),
   },
   {
+    title: 'Generate WholesalerCoupan',
+    path: '/Generatewholesalecoupan',
+    icon: icon('ic_user'),
+  },
+  {
     title: 'Ads Banner',
     path: '/Banner',
     icon: icon('ic_user'),
