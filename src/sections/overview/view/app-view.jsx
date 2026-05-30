@@ -1,10 +1,8 @@
+/* eslint-disable perfectionist/sort-imports */
 /* eslint-disable no-unused-vars */
 /* eslint-disable perfectionist/sort-named-imports */
 /* eslint-disable react/prop-types */
 import React, { useEffect, useState } from "react";
-// eslint-disable-next-line perfectionist/sort-imports
-import { faker } from "@faker-js/faker";
-// eslint-disable-next-line perfectionist/sort-imports
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Unstable_Grid2";
 import Typography from "@mui/material/Typography";
@@ -17,106 +15,228 @@ import {
   TableRow,
   TableBody,
   Chip,
+  Box,
+  CircularProgress,
+  Avatar,
+  TablePagination,
 } from "@mui/material";
-// eslint-disable-next-line perfectionist/sort-imports
 import { analyticsService } from "src/services/ApiService";
-// eslint-disable-next-line no-unused-vars, unused-imports/no-unused-imports, perfectionist/sort-imports
-import AppOrderTimeline from "../app-order-timeline";
-import AppCurrentVisits from "../app-current-visits";
-import AppWebsiteVisits from "../app-website-visits";
+import ViewOrderAnalytics from "../app-website-visits";
 import AppWidgetSummary from "../app-widget-summary";
-import AppCurrentSubject from "../app-current-subject";
 
-// ----------------------------------------------------------------------
+// Helper function for formatting currency
+const formatCurrency = (amount) => {
+  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)}Cr`;
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
+  return `₹${amount.toLocaleString()}`;
+};
+
+// Helper function for formatting dates
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+// Status chip component
+const OrderStatusChip = ({ status }) => {
+  const statusColors = {
+    PLACED: 'info',
+    CONFIRMED: 'primary',
+    PROCESSING: 'warning',
+    SHIPPED: 'secondary',
+    DELIVERED: 'success',
+    CANCELLED: 'error',
+  };
+  return <Chip label={status} size="small" color={statusColors[status] || 'default'} />;
+};
+
+// Recent Orders Table Component
+const RecentOrdersTable = ({ orders }) => {
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  const paginatedOrders = orders.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  return (
+    <Card sx={{ p: 3 }}>
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        Recent Orders
+      </Typography>
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell><strong>Order ID</strong></TableCell>
+              <TableCell><strong>Date</strong></TableCell>
+              <TableCell><strong>Customer</strong></TableCell>
+              <TableCell align="right"><strong>Amount</strong></TableCell>
+              <TableCell><strong>Status</strong></TableCell>
+              <TableCell><strong>Payment</strong></TableCell>
+             </TableRow>
+          </TableHead>
+          <TableBody>
+            {paginatedOrders.map((order) => (
+              <TableRow key={order._id} hover>
+                <TableCell>#{order._id?.slice(-8)}</TableCell>
+                <TableCell>{formatDate(order.createdAt)}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.main' }}>
+                      {order.user?.name?.charAt(0) || order.user?.phoneNumber?.charAt(0) || 'G'}
+                    </Avatar>
+                    <Typography variant="body2">
+                      {order.user?.name || order.user?.phoneNumber || 'Guest User'}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                <TableCell align="right">
+                  <Typography variant="body2" fontWeight="bold">
+                    {formatCurrency(order.totalAmount)}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <OrderStatusChip status={order.status} />
+                </TableCell>
+                <TableCell>
+                  <Chip 
+                    label={order.payment?.method || 'N/A'} 
+                    size="small" 
+                    variant="outlined"
+                    color={order.payment?.status === 'PAID' ? 'success' : 'warning'}
+                  />
+                </TableCell>
+               </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <TablePagination
+        rowsPerPageOptions={[5, 10, 25]}
+        component="div"
+        count={orders.length}
+        rowsPerPage={rowsPerPage}
+        page={page}
+        onPageChange={handleChangePage}
+        onRowsPerPageChange={handleChangeRowsPerPage}
+      />
+    </Card>
+  );
+};
+
+// Top Products Table Component
+const TopProductsTable = ({ products }) => (
+  <Card sx={{ p: 3 }}>
+    <Typography variant="h6" sx={{ mb: 2 }}>
+      Top Selling Products
+    </Typography>
+    <TableContainer>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell><strong>Product</strong></TableCell>
+            <TableCell align="center"><strong>Quantity Sold</strong></TableCell>
+            <TableCell align="right"><strong>Revenue</strong></TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {products.length > 0 ? (
+            products.map((product, index) => {
+              const productName = product._id?.name || product.name || 'Unknown Product';
+              return (
+                <TableRow key={index} hover>
+                  <TableCell>
+                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                      {productName}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Chip label={product.totalQuantity} size="small" color="primary" />
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" color="success.main" fontWeight="bold">
+                      {formatCurrency(product.totalRevenue)}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          ) : (
+            <TableRow>
+              <TableCell colSpan={3} align="center">
+                <Typography variant="body2" color="text.secondary">
+                  No product data available
+                </Typography>
+              </TableCell>
+             </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  </Card>
+);
 
 export default function AppView() {
+  const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState({
     categories: 0,
     subcategories: 0,
     products: 0,
   });
-
-  const [visitorStats, setVisitorStats] = useState({
-    totalVisitors: 0,
-    todayVisitors: 0,
-    activeUsers: 0,
-    returningVisitors: 0,
-    newVisitors: 0,
-    weeklyData: [],
-    monthlyData: []
-  });
-
-  const [salesHistory, setSalesHistory] = useState({
-    totalSales: 0,
+  const [dashboardStats, setDashboardStats] = useState({
+    totalUsers: 0,
+    totalOrders: 0,
     totalRevenue: 0,
     averageOrderValue: 0,
-    salesByMonth: [],
+    cancelledOrders: 0,
+    recentRevenue: 0,
+    recentOrdersCount: 0,
+    orderStatusBreakdown: {},
     topProducts: [],
-    salesGrowth: 0
+    orderTrends: { labels: [], orders: [], revenue: [] },
   });
+  const [recentOrders, setRecentOrders] = useState([]);
 
   useEffect(() => {
-    const fetchCounts = async () => {
+    const fetchAllData = async () => {
+      setLoading(true);
       try {
-        const data = await analyticsService.getAnalyticsCounts();
-        setCounts(data);
+        const [countsData, statsData, ordersData] = await Promise.all([
+          analyticsService.getAnalyticsCounts(),
+          analyticsService.getDashboardStats(),
+          analyticsService.getRecentOrders(20),
+        ]);
+
+        setCounts(countsData);
+        setDashboardStats(statsData);
+        setRecentOrders(ordersData);
       } catch (error) {
-        console.error("Error fetching counts:", error);
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setLoading(false);
       }
     };
-    
-    const fetchVisitorStats = () => {
-      // Generate visitor statistics
-      const weeklyLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      const weeklyVisitors = weeklyLabels.map(() => faker.number.int({ min: 500, max: 2500 }));
-      const monthlyLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      const monthlyVisitors = monthlyLabels.map(() => faker.number.int({ min: 8000, max: 15000 }));
-      
-      setVisitorStats({
-        totalVisitors: faker.number.int({ min: 50000, max: 150000 }),
-        todayVisitors: faker.number.int({ min: 800, max: 3500 }),
-        activeUsers: faker.number.int({ min: 120, max: 450 }),
-        returningVisitors: faker.number.int({ min: 15000, max: 45000 }),
-        newVisitors: faker.number.int({ min: 10000, max: 35000 }),
-        weeklyData: weeklyVisitors,
-        monthlyData: monthlyVisitors
-      });
-    };
-    
-    const fetchSalesHistory = () => {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const salesByMonth = months.map((month) => ({
-        month,
-        sales: faker.number.int({ min: 50000, max: 200000 }),
-        revenue: faker.number.int({ min: 500000, max: 2500000 }),
-        orders: faker.number.int({ min: 1000, max: 8000 })
-      }));
-      
-      const topProducts = [
-        { name: "Fresh Apples (1kg)", sales: 12500, revenue: 1249990, growth: 15 },
-        { name: "Organic Milk (1L)", sales: 10800, revenue: 539980, growth: 22 },
-        { name: "Basmati Rice (5kg)", sales: 8900, revenue: 979980, growth: 8 },
-        { name: "Whole Wheat Bread", sales: 7600, revenue: 379980, growth: 12 },
-        { name: "Premium Tea (250g)", sales: 6700, revenue: 669990, growth: 18 }
-      ];
-      
-      const totalRevenue = salesByMonth.reduce((sum, item) => sum + item.revenue, 0);
-      const totalOrders = salesByMonth.reduce((sum, item) => sum + item.orders, 0);
-      
-      setSalesHistory({
-        totalSales: totalOrders,
-        totalRevenue,
-        averageOrderValue: Math.round(totalRevenue / totalOrders),
-        salesByMonth,
-        topProducts,
-        salesGrowth: faker.number.int({ min: 5, max: 35 })
-      });
-    };
-    
-    fetchCounts();
-    fetchVisitorStats();
-    fetchSalesHistory();
+
+    fetchAllData();
   }, []);
+
+  if (loading) {
+    return (
+      <Container maxWidth="xl">
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <CircularProgress />
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="xl">
@@ -131,7 +251,7 @@ export default function AppView() {
             title="Categories"
             total={counts.categories}
             color="success"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_bag.png" />}
+            icon=""
           />
         </Grid>
 
@@ -141,7 +261,7 @@ export default function AppView() {
             title="Subcategories"
             total={counts.subcategories}
             color="info"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_users.png" />}
+            icon=""
           />
         </Grid>
 
@@ -151,37 +271,7 @@ export default function AppView() {
             title="Products"
             total={counts.products}
             color="warning"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_buy.png" />}
-          />
-        </Grid>
-
-        {/* Total Visitors */}
-        <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
-            title="Total Visitors"
-            total={visitorStats.totalVisitors}
-            color="primary"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_users.png" />}
-          />
-        </Grid>
-
-        {/* Today's Visitors */}
-        <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
-            title="Today's Visitors"
-            total={visitorStats.todayVisitors}
-            color="info"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_users.png" />}
-          />
-        </Grid>
-
-        {/* Active Users */}
-        <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
-            title="Active Users Now"
-            total={visitorStats.activeUsers}
-            color="warning"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_users.png" />}
+            icon=""
           />
         </Grid>
 
@@ -189,27 +279,29 @@ export default function AppView() {
         <Grid xs={12} sm={6} md={3}>
           <AppWidgetSummary
             title="Total Revenue"
-            total={`₹${(salesHistory.totalRevenue / 10000000).toFixed(1)}Cr`}
-            color="success"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_bag.png" />}
+            total={formatCurrency(dashboardStats.totalRevenue)}
+            color="primary"
+            icon=""
           />
         </Grid>
 
-         <Grid item xs={12} sm={6} md={3}>
-  <AppWidgetSummary
-    title="Top 10 Customers"
-    total={10}
-    color="success"
-    icon={<img alt="icon" src="/assets/icons/glass/ic_glass_bag.png" />}
-  />
-</Grid>
-        {/* Total Sales */}
+        {/* Total Orders */}
         <Grid xs={12} sm={6} md={3}>
           <AppWidgetSummary
             title="Total Orders"
-            total={salesHistory.totalSales}
-            color="error"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_buy.png" />}
+            total={dashboardStats.totalOrders}
+            color="success"
+            icon=""
+          />
+        </Grid>
+
+        {/* Total Users */}
+        <Grid xs={12} sm={6} md={3}>
+          <AppWidgetSummary
+            title="Total Users"
+            total={dashboardStats.totalUsers}
+            color="info"
+            icon=""
           />
         </Grid>
 
@@ -217,95 +309,59 @@ export default function AppView() {
         <Grid xs={12} sm={6} md={3}>
           <AppWidgetSummary
             title="Avg Order Value"
-            total={`₹${(salesHistory.averageOrderValue / 1000).toFixed(1)}k`}
-            color="primary"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_bag.png" />}
+            total={formatCurrency(dashboardStats.averageOrderValue)}
+            color="warning"
+            icon=""
           />
         </Grid>
 
-        {/* Sales Growth */}
+        {/* Cancelled Orders */}
         <Grid xs={12} sm={6} md={3}>
           <AppWidgetSummary
-            title="Sales Growth (YoY)"
-            total={`+${salesHistory.salesGrowth}%`}
-            color="info"
-            icon={<img alt="icon" src="/assets/icons/glass/ic_glass_bag.png" />}
+            title="Cancelled Orders"
+            total={dashboardStats.cancelledOrders}
+            color="error"
+            icon=""
           />
         </Grid>
 
-        {/* Visitor Analytics - Weekly */}
-        <Grid xs={12} md={6} lg={8}>
-          <AppWebsiteVisits
-            title="Visitor Analytics (Last 7 Days)"
-            subheader="Daily unique visitors to the platform"
-            chart={{
-              labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-              series: [
-                {
-                  name: "Visitors",
-                  type: "column",
-                  fill: "solid",
-                  data: visitorStats.weeklyData,
-                },
-                {
-                  name: "Returning Visitors",
-                  type: "line",
-                  fill: "solid",
-                  data: visitorStats.weeklyData.map(v => Math.floor(v * 0.6)),
-                },
-              ],
-            }}
+        {/* Order Analytics Chart */}
+        <Grid xs={12} md={12} lg={12}>
+          <ViewOrderAnalytics
+            title="Order & Revenue Analytics"
+            subheader="Track your order performance and revenue trends"
           />
         </Grid>
 
-        {/* Visitor Breakdown */}
-        <Grid xs={12} md={6} lg={4}>
-          <AppCurrentVisits
-            title="Visitor Breakdown"
-            chart={{
-              series: [
-                { label: "New Visitors", value: visitorStats.newVisitors },
-                { label: "Returning Visitors", value: visitorStats.returningVisitors },
-                { label: "Active Users", value: visitorStats.activeUsers * 10 },
-              ],
-            }}
-          />
+        {/* Top Products */}
+        <Grid xs={12} md={6}>
+          <TopProductsTable products={dashboardStats.topProducts} />
         </Grid>
 
-        {/* Sales History - Monthly */}
-        <Grid xs={12} md={6} lg={8}>
+        {/* Order Status Breakdown */}
+        <Grid xs={12} md={6}>
           <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Monthly Sales History (₹ in Lakhs)
-            </Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Order Status Breakdown</Typography>
             <TableContainer>
-              <Table size="small">
+              <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell><strong>Month</strong></TableCell>
-                    <TableCell align="right"><strong>Orders</strong></TableCell>
-                    <TableCell align="right"><strong>Revenue (₹)</strong></TableCell>
-                    <TableCell align="right"><strong>Growth</strong></TableCell>
-                  </TableRow>
+                    <TableCell><strong>Status</strong></TableCell>
+                    <TableCell align="right"><strong>Count</strong></TableCell>
+                    <TableCell align="right"><strong>Percentage</strong></TableCell>
+                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {salesHistory.salesByMonth.slice(-6).map((item, index, array) => {
-                    const prevMonth = index > 0 ? array[index - 1] : null;
-                    const growth = prevMonth ? ((item.revenue - prevMonth.revenue) / prevMonth.revenue * 100).toFixed(1) : 0;
+                  {Object.entries(dashboardStats.orderStatusBreakdown).map(([status, count]) => {
+                    const percentage = dashboardStats.totalOrders > 0 
+                      ? ((count / dashboardStats.totalOrders) * 100).toFixed(1) 
+                      : 0;
                     return (
-                      <TableRow key={item.month}>
-                        <TableCell>{item.month}</TableCell>
-                        <TableCell align="right">{item.orders.toLocaleString()}</TableCell>
-                        <TableCell align="right">₹{(item.revenue / 100000).toFixed(1)}L</TableCell>
-                        <TableCell align="right">
-                          <Chip 
-                            label={`${growth > 0 ? '+' : ''}${growth}%`} 
-                            size="small" 
-                            color={growth > 0 ? "success" : "error"}
-                            variant="outlined"
-                          />
-                        </TableCell>
-                      </TableRow>
+                      <TableRow key={status}>
+                        <TableCell><OrderStatusChip status={status} /></TableCell>
+                        <TableCell align="right">{count.toLocaleString()}</TableCell>
+                        <TableCell align="right">{percentage}%</TableCell>
+                       </TableRow>
                     );
                   })}
                 </TableBody>
@@ -314,68 +370,39 @@ export default function AppView() {
           </Card>
         </Grid>
 
-        {/* Monthly Sales Overview */}
-        <Grid xs={12} md={6} lg={8}>
-          <AppWebsiteVisits
-            title="Sales History Overview (2024)"
-            subheader={`${salesHistory.salesGrowth}% growth in sales compared to last year`}
-            chart={{
-              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-              series: [
-                {
-                  name: "Revenue (₹ Lakhs)",
-                  type: "column",
-                  fill: "solid",
-                  data: salesHistory.salesByMonth.map(item => item.revenue / 100000),
-                },
-                {
-                  name: "Orders (Hundreds)",
-                  type: "line",
-                  fill: "solid",
-                  data: salesHistory.salesByMonth.map(item => item.orders / 100),
-                },
-              ],
-            }}
-          />
+        {/* Recent Orders */}
+        <Grid xs={12}>
+          <RecentOrdersTable orders={recentOrders} />
         </Grid>
 
-        {/* Order Distribution by Region */}
-        <Grid xs={12} md={6} lg={4}>
-          <AppCurrentVisits
-            title="Order Distribution by Indian Region"
-            chart={{
-              series: [
-                { label: "North India (Delhi, Punjab, UP)", value: 6200 },
-                { label: "South India (Bangalore, Chennai, Hyderabad)", value: 7800 },
-                { label: "West India (Mumbai, Pune, Gujarat)", value: 6900 },
-                { label: "East India (Kolkata, Odisha, Assam)", value: 3600 },
-              ],
-            }}
-          />
-        </Grid>
-
-        {/* Customer Behavior */}
-        <Grid xs={12} md={6} lg={4}>
-          <AppCurrentSubject
-            title="Customer Behavior"
-            chart={{
-              categories: ['Mobile App', 'Website', 'Repeat Rate', 'Avg Cart', 'Retention', 'Churn'],
-              series: [
-                {
-                  name: "Quick Commerce",
-                  data: [85, 35, 78, 92, 88, 12],
-                },
-                {
-                  name: "E-commerce",
-                  data: [65, 48, 65, 84, 80, 20],
-                },
-                {
-                  name: "Overall (India)",
-                  data: [75, 41, 71, 88, 84, 16],
-                },
-              ],
-            }}
-          />
+        {/* Quick Stats Summary */}
+        <Grid xs={12}>
+          <Card sx={{ p: 3, bgcolor: 'primary.main', color: 'white' }}>
+            <Grid container spacing={3}>
+              <Grid xs={12} sm={4}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Recent Revenue (30 days)
+                </Typography>
+                <Typography variant="h5">{formatCurrency(dashboardStats.recentRevenue)}</Typography>
+              </Grid>
+              <Grid xs={12} sm={4}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Recent Orders (30 days)
+                </Typography>
+                <Typography variant="h5">{dashboardStats.recentOrdersCount}</Typography>
+              </Grid>
+              <Grid xs={12} sm={4}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Completion Rate
+                </Typography>
+                <Typography variant="h5">
+                  {dashboardStats.totalOrders > 0 
+                    ? ((1 - dashboardStats.cancelledOrders / dashboardStats.totalOrders) * 100).toFixed(1)
+                    : 0}%
+                </Typography>
+              </Grid>
+            </Grid>
+          </Card>
         </Grid>
       </Grid>
     </Container>
