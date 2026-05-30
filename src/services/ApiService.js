@@ -1,4 +1,3 @@
-/* eslint-disable prefer-destructuring */
 // services/analyticsService.js
 
 const API_BASE_URL = 'https://my-project-backend-ee4t.onrender.com/api';
@@ -37,6 +36,19 @@ export const analyticsService = {
     }
   },
 
+  // Get all users - Using correct API endpoint
+  getAllUsers: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/user`);
+      const data = await response.json();
+      console.log('Users API response:', data); // Debug log
+      return data.users || [];
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
+  },
+
   // Get order analytics (public)
   getOrderAnalytics: async (period = 'monthly') => {
     try {
@@ -60,18 +72,6 @@ export const analyticsService = {
       return data.orders || [];
     } catch (error) {
       console.error('Error fetching orders:', error);
-      return [];
-    }
-  },
-
-  // Get all users (public)
-  getAllUsers: async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/users/all`);
-      const data = await response.json();
-      return data.users || [];
-    } catch (error) {
-      console.error('Error fetching users:', error);
       return [];
     }
   },
@@ -104,6 +104,7 @@ export const analyticsService = {
       // Calculate order status breakdown
       const orderStatusBreakdown = {};
       allOrders.forEach((order) => {
+        // eslint-disable-next-line prefer-destructuring
         const status = order.status;
         orderStatusBreakdown[status] = (orderStatusBreakdown[status] || 0) + 1;
       });
@@ -112,7 +113,9 @@ export const analyticsService = {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const recentOrders = allOrders.filter((order) => new Date(order.createdAt) >= thirtyDaysAgo);
+      const recentOrders = allOrders.filter(
+        (order) => order.createdAt && new Date(order.createdAt) >= thirtyDaysAgo
+      );
 
       const recentRevenue = recentOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
 
