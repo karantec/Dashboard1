@@ -406,7 +406,7 @@ function CustomizationBuilder({ customizations, setFieldValue }) {
                 {(c.options || []).map((opt, oi) => (
                   <Box key={oi} display="flex" gap={1} mb={1}>
                     <TextField size="small" fullWidth placeholder="Option label" value={opt.label} onChange={(e) => updateOption(i, oi, 'label', e.target.value)} />
-                    <TextField size="small" type="number" placeholder="Price adj." value={opt.priceAdjustment} onChange={(e) => updateOption(i, oi, 'priceAdjustment', e.target.value)} sx={{ width: '120px' }} InputProps={{ inputProps: { min: -1000, step: 10 } }} />
+                    <TextField size="small" type="number" placeholder="Price adj." value={opt.priceAdjustment} onChange={(e) => updateOption(i, oi, 'priceAdjustment', e.target.value)} sx={{ width: '120px' }} InputProps={{ inputProps: { min: -1000 } }} />
                     <IconButton size="small" color="error" onClick={() => removeOption(i, oi)}><MdRemove /></IconButton>
                   </Box>
                 ))}
