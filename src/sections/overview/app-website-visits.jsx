@@ -26,7 +26,7 @@ import Chart, { useChart } from 'src/components/chart';
 
 export default function ViewOrderAnalytics({ title, subheader, ...other }) {
   const theme = useTheme();
-  const [period, setPeriod] = useState('monthly');
+  const [period, setPeriod] = useState('yearly');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,16 +34,12 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
   // Helper function to get period display text
   const getPeriodDisplayText = () => {
     switch (period) {
-      case 'daily':
-        return 'Daily';
-      case 'weekly':
-        return 'Weekly';
-      case 'monthly':
-        return 'Monthly';
       case 'yearly':
         return 'Yearly';
+      case 'all':
+        return 'All Time';
       default:
-        return 'Monthly';
+        return 'Yearly';
     }
   };
 
@@ -87,51 +83,91 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     let trendsData = [];
     let labels = [];
 
-    if (period === 'daily' && data.trends?.daily) {
-      trendsData = data.trends.daily;
-      labels = trendsData.map(item => item._id);
-    } else if (period === 'weekly' && data.trends?.weekly) {
-      trendsData = data.trends.weekly;
-      labels = trendsData.map(item => `Week ${item._id.split('-')[1]}`);
-    } else if (period === 'monthly' && data.trends?.monthly) {
-      trendsData = data.trends.monthly;
-      labels = trendsData.map(item => {
-        const [year, month] = item._id.split('-');
-        return new Date(year, month - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
-      });
-    } else if (period === 'yearly' && data.trends?.yearly) {
+    if (period === 'yearly' && data.trends?.yearly && data.trends.yearly.length > 0) {
       trendsData = data.trends.yearly;
-      labels = trendsData.map(item => item._id);
+      labels = trendsData.map(item => String(item._id));
+    } else if (period === 'all') {
+      // For all time, show yearly aggregated data
+      if (data.trends?.yearly && data.trends.yearly.length > 0) {
+        trendsData = data.trends.yearly;
+        labels = trendsData.map(item => String(item._id));
+      } else if (data.trends?.all && data.trends.all.length > 0) {
+        trendsData = data.trends.all;
+        labels = trendsData.map(item => String(item._id));
+      }
     }
 
-    const orderSeries = trendsData.map(item => item.orders);
-    const revenueSeries = trendsData.map(item => item.revenue);
+    const orderSeries = trendsData.map(item => item.orders || 0);
+    const revenueSeries = trendsData.map(item => item.revenue || 0);
+
+    console.log('Chart Data:', { labels, orderSeries, revenueSeries }); // Debug log
 
     return { labels, orderSeries, revenueSeries };
   };
 
   const { labels, orderSeries, revenueSeries } = getChartData();
 
-  // Chart options
+  // Chart options - NO HOVER EFFECTS
   const chartOptions = useChart({
     colors: ['#00A76F', '#FFAB00'],
+    chart: {
+      toolbar: {
+        show: false, // Remove toolbar
+      },
+      zoom: {
+        enabled: false, // Disable zoom
+      },
+      animations: {
+        enabled: true, // Keep animations but no hover
+      },
+    },
     plotOptions: {
       bar: {
         columnWidth: '16%',
         borderRadius: 4,
+        colors: {
+          ranges: [
+            {
+              from: 0,
+              to: 1000000,
+              color: '#00A76F'
+            }
+          ]
+        }
       },
     },
     fill: {
       type: ['solid', 'gradient'],
+      opacity: [0.85, 0.9],
+      gradient: {
+        shade: 'light',
+        type: 'horizontal',
+        shadeIntensity: 0.5,
+        gradientToColors: ['#FFAB00'],
+        inverseColors: false,
+        opacityFrom: 1,
+        opacityTo: 0.8,
+      },
     },
     labels: labels,
     xaxis: {
-      type: period === 'daily' ? 'datetime' : 'category',
+      type: 'category',
+      categories: labels,
       labels: {
         rotate: -45,
         style: {
           fontSize: '12px',
+          fontWeight: 500,
+          colors: theme.palette.text.secondary,
         },
+      },
+      axisBorder: {
+        show: true,
+        color: theme.palette.divider,
+      },
+      axisTicks: {
+        show: true,
+        color: theme.palette.divider,
       },
     },
     yaxis: {
@@ -139,32 +175,90 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
         text: 'Orders / Revenue (₹)',
         style: {
           fontSize: '12px',
+          fontWeight: 500,
         },
       },
       labels: {
-        formatter: (value) => `${value.toFixed(0)}`,
-      },
-    },
-    tooltip: {
-      shared: true,
-      intersect: false,
-      y: {
-        formatter: (value, { seriesIndex }) => {
-          if (seriesIndex === 0) {
-            return `${value} orders`;
-          }
-          return `₹${value.toFixed(2)}`;
+        formatter: (value) => `${Math.round(value)}`,
+        style: {
+          colors: theme.palette.text.secondary,
         },
       },
+      min: 0,
+    },
+    tooltip: {
+      enabled: false, // DISABLE ALL TOOLTIPS/HOVER
+      shared: false,
+      intersect: false,
     },
     legend: {
       position: 'top',
       horizontalAlign: 'right',
+      fontSize: '12px',
+      fontWeight: 500,
+      labels: {
+        colors: theme.palette.text.primary,
+      },
+      onItemHover: {
+        highlightDataSeries: false, // Disable hover on legend
+      },
     },
     stroke: {
-      width: [0, 2],
+      width: [0, 3],
       curve: 'smooth',
+      colors: ['#00A76F', '#FFAB00'],
     },
+    grid: {
+      borderColor: theme.palette.divider,
+      strokeDashArray: 4,
+      xaxis: {
+        lines: {
+          show: true,
+        },
+      },
+      yaxis: {
+        lines: {
+          show: true,
+        },
+      },
+    },
+    dataLabels: {
+      enabled: true, // SHOW DATA LABELS
+      offsetY: -10,
+      style: {
+        fontSize: '11px',
+        fontWeight: 600,
+        colors: ['#00A76F', '#FFAB00'],
+      },
+      formatter: (val) => {
+        if (typeof val === 'number') {
+          return val > 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val);
+        }
+        return val;
+      },
+    },
+    states: {
+      hover: {
+        filter: {
+          type: 'none', // NO HOVER EFFECTS
+        },
+      },
+      active: {
+        filter: {
+          type: 'none', // NO ACTIVE EFFECTS
+        },
+      },
+    },
+    responsive: [
+      {
+        breakpoint: 600,
+        options: {
+          dataLabels: {
+            enabled: false, // Hide data labels on mobile
+          },
+        },
+      },
+    ],
   });
 
   const series = [
@@ -182,12 +276,20 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     },
   ];
 
-  // Prepare hourly distribution data
+  // Prepare hourly distribution data - NO HOVER
   const hourlyLabels = data?.trends?.hourlyDistribution?.map(item => `${item._id}:00`) || [];
   const hourlyOrders = data?.trends?.hourlyDistribution?.map(item => item.orders) || [];
 
   const hourlyChartOptions = useChart({
     colors: ['#2065D1'],
+    chart: {
+      toolbar: {
+        show: false,
+      },
+      zoom: {
+        enabled: false,
+      },
+    },
     plotOptions: {
       bar: {
         columnWidth: '70%',
@@ -210,11 +312,30 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
       title: {
         text: 'Number of Orders',
       },
+      min: 0,
     },
     tooltip: {
-      y: {
-        formatter: (value) => `${value} orders`,
+      enabled: false, // DISABLE TOOLTIPS
+    },
+    dataLabels: {
+      enabled: true, // SHOW DATA LABELS
+      offsetY: -5,
+      style: {
+        fontSize: '10px',
+        fontWeight: 600,
       },
+      formatter: (val) => Math.round(val),
+    },
+    states: {
+      hover: {
+        filter: {
+          type: 'none', // NO HOVER
+        },
+      },
+    },
+    grid: {
+      borderColor: theme.palette.divider,
+      strokeDashArray: 4,
     },
   });
 
@@ -226,7 +347,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     },
   ];
 
-  // Prepare status pie chart data
+  // Prepare status pie chart data - NO HOVER
   const statusColors = {
     PLACED: theme.palette.success.main,
     CONFIRMED: theme.palette.info.main,
@@ -243,24 +364,65 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
   const pieChartOptions = useChart({
     labels: statusLabels,
     colors: statusColorsArray,
+    chart: {
+      toolbar: {
+        show: false,
+      },
+    },
     legend: {
       position: 'bottom',
+      fontSize: '12px',
     },
     tooltip: {
-      y: {
-        formatter: (value) => `${value} orders`,
+      enabled: false, // DISABLE TOOLTIPS
+    },
+    dataLabels: {
+      enabled: true,
+      style: {
+        fontSize: '11px',
+        fontWeight: 600,
+      },
+      formatter: (val, opts) => {
+        const percentage = ((val / statusSeries.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+        return `${percentage}%`;
       },
     },
     plotOptions: {
       pie: {
         donut: {
           size: '70%',
+          labels: {
+            show: true,
+            total: {
+              show: true,
+              label: 'Total',
+              formatter: () => statusSeries.reduce((a, b) => a + b, 0),
+            },
+          },
         },
+        expandOnClick: false, // Disable expand on click
         dataLabels: {
           offset: -10,
         },
       },
     },
+    states: {
+      hover: {
+        filter: {
+          type: 'none', // NO HOVER
+        },
+      },
+    },
+    responsive: [
+      {
+        breakpoint: 600,
+        options: {
+          dataLabels: {
+            enabled: false,
+          },
+        },
+      },
+    ],
   });
 
   if (loading) {
@@ -293,6 +455,9 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     );
   }
 
+  // Check if chart has data
+  const hasChartData = labels.length > 0 && orderSeries.length > 0;
+
   return (
     <Card {...other}>
       <CardHeader
@@ -305,9 +470,6 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
             size="small"
             sx={{ minWidth: 120 }}
           >
-            <MenuItem value="daily">Daily</MenuItem>
-            <MenuItem value="weekly">Weekly</MenuItem>
-            <MenuItem value="monthly">Monthly</MenuItem>
             <MenuItem value="yearly">Yearly</MenuItem>
             <MenuItem value="all">All Time</MenuItem>
           </Select>
@@ -372,14 +534,22 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 {getPeriodDisplayText()} performance
               </Typography>
-              <Chart
-                dir="ltr"
-                type="line"
-                series={series}
-                options={chartOptions}
-                width="100%"
-                height={364}
-              />
+              {hasChartData ? (
+                <Chart
+                  dir="ltr"
+                  type="line"
+                  series={series}
+                  options={chartOptions}
+                  width="100%"
+                  height={364}
+                />
+              ) : (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 364 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No chart data available for the selected period
+                  </Typography>
+                </Box>
+              )}
             </Paper>
           </Grid>
 
@@ -389,7 +559,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
               <Typography variant="h6" gutterBottom>
                 Order Status Distribution
               </Typography>
-              {statusSeries.length > 0 ? (
+              {statusSeries.length > 0 && statusSeries.reduce((a, b) => a + b, 0) > 0 ? (
                 <Chart
                   dir="ltr"
                   type="donut"
@@ -417,7 +587,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 When do customers order most?
               </Typography>
-              {hourlyOrders.length > 0 ? (
+              {hourlyOrders.length > 0 && hourlyOrders.some(val => val > 0) ? (
                 <Chart
                   dir="ltr"
                   type="bar"
@@ -443,7 +613,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
                 Top Selling Products
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Most popular items this {getPeriodDisplayText().toLowerCase()}
+                Most popular items {period === 'yearly' ? 'this year' : 'of all time'}
               </Typography>
               {data.topProducts && data.topProducts.length > 0 ? (
                 <Box sx={{ overflowX: 'auto' }}>

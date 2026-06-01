@@ -132,57 +132,57 @@ const RecentOrdersTable = ({ orders }) => {
   );
 };
 
-// Top Products Table Component
-const TopProductsTable = ({ products }) => (
-  <Card sx={{ p: 3 }}>
-    <Typography variant="h6" sx={{ mb: 2 }}>
-      Top Selling Products
-    </Typography>
-    <TableContainer>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell><strong>Product</strong></TableCell>
-            <TableCell align="center"><strong>Quantity Sold</strong></TableCell>
-            <TableCell align="right"><strong>Revenue</strong></TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {products.length > 0 ? (
-            products.map((product, index) => {
-              const productName = product._id?.name || product.name || 'Unknown Product';
-              return (
-                <TableRow key={index} hover>
-                  <TableCell>
-                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                      {productName}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip label={product.totalQuantity} size="small" color="primary" />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography variant="body2" color="success.main" fontWeight="bold">
-                      {formatCurrency(product.totalRevenue)}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          ) : (
-            <TableRow>
-              <TableCell colSpan={3} align="center">
-                <Typography variant="body2" color="text.secondary">
-                  No product data available
-                </Typography>
-              </TableCell>
-             </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  </Card>
-);
+// // Top Products Table Component
+// const TopProductsTable = ({ products }) => (
+//   <Card sx={{ p: 3 }}>
+//     <Typography variant="h6" sx={{ mb: 2 }}>
+//       Top Selling Products
+//     </Typography>
+//     {/* <TableContainer>
+//       <Table size="small">
+//         <TableHead>
+//           <TableRow>
+//             <TableCell><strong>Product</strong></TableCell>
+//             <TableCell align="center"><strong>Quantity Sold</strong></TableCell>
+//             <TableCell align="right"><strong>Revenue</strong></TableCell>
+//           </TableRow>
+//         </TableHead>
+//         <TableBody>
+//           {products.length > 0 ? (
+//             products.map((product, index) => {
+//               const productName = product._id?.name || product.name || 'Unknown Product';
+//               return (
+//                 <TableRow key={index} hover>
+//                   <TableCell>
+//                     <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+//                       {productName}
+//                     </Typography>
+//                   </TableCell>
+//                   <TableCell align="center">
+//                     <Chip label={product.totalQuantity} size="small" color="primary" />
+//                   </TableCell>
+//                   <TableCell align="right">
+//                     <Typography variant="body2" color="success.main" fontWeight="bold">
+//                       {formatCurrency(product.totalRevenue)}
+//                     </Typography>
+//                   </TableCell>
+//                 </TableRow>
+//               );
+//             })
+//           ) : (
+//             <TableRow>
+//               <TableCell colSpan={3} align="center">
+//                 <Typography variant="body2" color="text.secondary">
+//                   No product data available
+//                 </Typography>
+//               </TableCell>
+//              </TableRow>
+//           )}
+//         </TableBody>
+//       </Table> */}
+//     </TableContainer>
+//   </Card>
+// );
 
 export default function AppView() {
   const [loading, setLoading] = useState(true);
@@ -334,12 +334,12 @@ export default function AppView() {
         </Grid>
 
         {/* Top Products */}
-        <Grid xs={12} md={6}>
+        {/* <Grid xs={12} md={6}>
           <TopProductsTable products={dashboardStats.topProducts} />
-        </Grid>
+        </Grid> */}
 
         {/* Order Status Breakdown */}
-        <Grid xs={12} md={6}>
+        {/* <Grid xs={12} md={6}>
           <Card sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Order Status Breakdown</Typography>
             <TableContainer>
@@ -368,15 +368,15 @@ export default function AppView() {
               </Table>
             </TableContainer>
           </Card>
-        </Grid>
+        </Grid> */}
 
         {/* Recent Orders */}
-        <Grid xs={12}>
+        {/* <Grid xs={12}>
           <RecentOrdersTable orders={recentOrders} />
-        </Grid>
+        </Grid> */}
 
         {/* Quick Stats Summary */}
-        <Grid xs={12}>
+        {/* <Grid xs={12}>
           <Card sx={{ p: 3, bgcolor: 'primary.main', color: 'white' }}>
             <Grid container spacing={3}>
               <Grid xs={12} sm={4}>
@@ -403,7 +403,7 @@ export default function AppView() {
               </Grid>
             </Grid>
           </Card>
-        </Grid>
+        </Grid> */}
       </Grid>
     </Container>
   );
