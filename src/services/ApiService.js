@@ -64,10 +64,18 @@ export const analyticsService = {
   // Get all orders (public)
   getAllOrders: async (status = null) => {
     try {
+      const token = localStorage.getItem('token'); // or get from your auth store
       const url = status
-        ? `${API_BASE_URL}/order/all?status=${status}`
-        : `${API_BASE_URL}/order/all`;
-      const response = await fetch(url);
+        ? `${API_BASE_URL}/order/admin/all?status=${status}`
+        : `${API_BASE_URL}/order/admin/all`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
       const data = await response.json();
       return data.orders || [];
     } catch (error) {
@@ -77,7 +85,7 @@ export const analyticsService = {
   },
 
   // Get recent orders
-  getRecentOrders: async (limit = 10) => {
+  getRecentOrders: async (limit = 50) => {
     try {
       const orders = await analyticsService.getAllOrders();
       return orders.slice(0, limit);

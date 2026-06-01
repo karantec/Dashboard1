@@ -277,22 +277,22 @@ export default function AppView() {
 
         {/* Total Revenue */}
         <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
+          {/* <AppWidgetSummary
             title="Total Revenue"
             total={formatCurrency(dashboardStats.totalRevenue)}
             color="primary"
             icon=""
-          />
+          /> */}
         </Grid>
 
         {/* Total Orders */}
         <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
+          {/* <AppWidgetSummary
             title="Total Orders"
             total={dashboardStats.totalOrders}
             color="success"
             icon=""
-          />
+          /> */}
         </Grid>
 
         {/* Total Users */}
@@ -307,22 +307,22 @@ export default function AppView() {
 
         {/* Average Order Value */}
         <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
+          {/* <AppWidgetSummary
             title="Avg Order Value"
             total={formatCurrency(dashboardStats.averageOrderValue)}
             color="warning"
             icon=""
-          />
+          /> */}
         </Grid>
 
         {/* Cancelled Orders */}
         <Grid xs={12} sm={6} md={3}>
-          <AppWidgetSummary
+          {/* <AppWidgetSummary
             title="Cancelled Orders"
             total={dashboardStats.cancelledOrders}
             color="error"
             icon=""
-          />
+          /> */}
         </Grid>
 
         {/* Order Analytics Chart */}
