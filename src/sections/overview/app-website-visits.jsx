@@ -56,7 +56,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
         
         const token = localStorage.getItem('token');
         const response = await axios.get(
-          `http://localhost:8000/api/order/analytics?period=${period}`,
+          `https://my-project-backend-ee4t.onrender.com/api/order/analytics?period=${period}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
