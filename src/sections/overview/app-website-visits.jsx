@@ -28,6 +28,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
   const theme = useTheme();
   const [period, setPeriod] = useState('yearly');
   const [data, setData] = useState(null);
+  const [visitorCount, setVisitorCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -43,33 +44,49 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     }
   };
 
-  // Fetch analytics data
+  // Fetch analytics data & visitor count concurrently
   useEffect(() => {
-    const fetchAnalytics = async () => {
+    const fetchAnalyticsAndVisitors = async () => {
       try {
         setLoading(true);
         setError(null);
         
         const token = localStorage.getItem('token');
-        const response = await axios.get(
-          `https://my-project-backend-ee4t.onrender.com/api/order/analytics?period=${period}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const headers = { Authorization: `Bearer ${token}` };
+
+        // Make both API requests simultaneously
+        const [analyticsResponse, visitorResponse] = await Promise.all([
+          axios.get(
+            `https://my-project-backend-ee4t.onrender.com/api/order/analytics?period=${period}`,
+            { headers }
+          ),
+          axios.get(
+            `https://my-project-backend-ee4t.onrender.com/api/visitor/visit`,
+            { headers }
+          ).catch(err => {
+            console.error('Failed to fetch visitor count:', err);
+            return { data: { count: 0 } }; // Fallback if visitor API fails
+          })
+        ]);
         
-        setData(response.data.data);
+        console.log('Full Analytics API Response:', analyticsResponse.data); // Debug log
+        console.log('Visitor API Response:', visitorResponse.data); // Debug log
+
+        setData(analyticsResponse.data.data);
+        
+        // Adjust based on your exact API key structure (assuming response.data.count or response.data.data.count)
+        const count = visitorResponse.data?.count ?? visitorResponse.data?.data?.count ?? 0;
+        setVisitorCount(count);
+
       } catch (err) {
-        console.error('Error fetching order analytics:', err);
-        setError(err.response?.data?.message || 'Failed to fetch analytics');
+        console.error('Error fetching dashboard data:', err);
+        setError(err.response?.data?.message || 'Failed to fetch analytics data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAnalytics();
+    fetchAnalyticsAndVisitors();
   }, [period]);
 
   const handlePeriodChange = (event) => {
@@ -87,7 +104,6 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
       trendsData = data.trends.yearly;
       labels = trendsData.map(item => String(item._id));
     } else if (period === 'all') {
-      // For all time, show yearly aggregated data
       if (data.trends?.yearly && data.trends.yearly.length > 0) {
         trendsData = data.trends.yearly;
         labels = trendsData.map(item => String(item._id));
@@ -100,8 +116,6 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     const orderSeries = trendsData.map(item => item.orders || 0);
     const revenueSeries = trendsData.map(item => item.revenue || 0);
 
-    console.log('Chart Data:', { labels, orderSeries, revenueSeries }); // Debug log
-
     return { labels, orderSeries, revenueSeries };
   };
 
@@ -111,30 +125,12 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
   const chartOptions = useChart({
     colors: ['#00A76F', '#FFAB00'],
     chart: {
-      toolbar: {
-        show: false, // Remove toolbar
-      },
-      zoom: {
-        enabled: false, // Disable zoom
-      },
-      animations: {
-        enabled: true, // Keep animations but no hover
-      },
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      animations: { enabled: true },
     },
     plotOptions: {
-      bar: {
-        columnWidth: '16%',
-        borderRadius: 4,
-        colors: {
-          ranges: [
-            {
-              from: 0,
-              to: 1000000,
-              color: '#00A76F'
-            }
-          ]
-        }
-      },
+      bar: { columnWidth: '16%', borderRadius: 4 },
     },
     fill: {
       type: ['solid', 'gradient'],
@@ -161,47 +157,28 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
           colors: theme.palette.text.secondary,
         },
       },
-      axisBorder: {
-        show: true,
-        color: theme.palette.divider,
-      },
-      axisTicks: {
-        show: true,
-        color: theme.palette.divider,
-      },
+      axisBorder: { show: true, color: theme.palette.divider },
+      axisTicks: { show: true, color: theme.palette.divider },
     },
     yaxis: {
       title: {
         text: 'Orders / Revenue (₹)',
-        style: {
-          fontSize: '12px',
-          fontWeight: 500,
-        },
+        style: { fontSize: '12px', fontWeight: 500 },
       },
       labels: {
         formatter: (value) => `${Math.round(value)}`,
-        style: {
-          colors: theme.palette.text.secondary,
-        },
+        style: { colors: theme.palette.text.secondary },
       },
       min: 0,
     },
-    tooltip: {
-      enabled: false, // DISABLE ALL TOOLTIPS/HOVER
-      shared: false,
-      intersect: false,
-    },
+    tooltip: { enabled: false, shared: false, intersect: false },
     legend: {
       position: 'top',
       horizontalAlign: 'right',
       fontSize: '12px',
       fontWeight: 500,
-      labels: {
-        colors: theme.palette.text.primary,
-      },
-      onItemHover: {
-        highlightDataSeries: false, // Disable hover on legend
-      },
+      labels: { colors: theme.palette.text.primary },
+      onItemHover: { highlightDataSeries: false },
     },
     stroke: {
       width: [0, 3],
@@ -211,19 +188,11 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     grid: {
       borderColor: theme.palette.divider,
       strokeDashArray: 4,
-      xaxis: {
-        lines: {
-          show: true,
-        },
-      },
-      yaxis: {
-        lines: {
-          show: true,
-        },
-      },
+      xaxis: { lines: { show: true } },
+      yaxis: { lines: { show: true } },
     },
     dataLabels: {
-      enabled: true, // SHOW DATA LABELS
+      enabled: true,
       offsetY: -10,
       style: {
         fontSize: '11px',
@@ -238,191 +207,114 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
       },
     },
     states: {
-      hover: {
-        filter: {
-          type: 'none', // NO HOVER EFFECTS
-        },
-      },
-      active: {
-        filter: {
-          type: 'none', // NO ACTIVE EFFECTS
-        },
-      },
+      hover: { filter: { type: 'none' } },
+      active: { filter: { type: 'none' } },
     },
     responsive: [
       {
         breakpoint: 600,
-        options: {
-          dataLabels: {
-            enabled: false, // Hide data labels on mobile
-          },
-        },
+        options: { dataLabels: { enabled: false } },
       },
     ],
   });
 
   const series = [
-    {
-      name: 'Orders',
-      type: 'column',
-      data: orderSeries,
-      fill: 'solid',
-    },
-    {
-      name: 'Revenue (₹)',
-      type: 'line',
-      data: revenueSeries,
-      fill: 'gradient',
-    },
+    { name: 'Orders', type: 'column', data: orderSeries, fill: 'solid' },
+    { name: 'Revenue (₹)', type: 'line', data: revenueSeries, fill: 'gradient' },
   ];
 
-  // Prepare hourly distribution data - NO HOVER
+  // Prepare hourly distribution data
   const hourlyLabels = data?.trends?.hourlyDistribution?.map(item => `${item._id}:00`) || [];
   const hourlyOrders = data?.trends?.hourlyDistribution?.map(item => item.orders) || [];
 
   const hourlyChartOptions = useChart({
     colors: ['#2065D1'],
-    chart: {
-      toolbar: {
-        show: false,
-      },
-      zoom: {
-        enabled: false,
-      },
-    },
-    plotOptions: {
-      bar: {
-        columnWidth: '70%',
-        borderRadius: 4,
-      },
-    },
+    chart: { toolbar: { show: false }, zoom: { enabled: false } },
+    plotOptions: { bar: { columnWidth: '70%', borderRadius: 4 } },
     labels: hourlyLabels,
     xaxis: {
-      title: {
-        text: 'Hour of Day',
-        style: {
-          fontSize: '12px',
-        },
-      },
-      labels: {
-        rotate: -45,
-      },
+      title: { text: 'Hour of Day', style: { fontSize: '12px' } },
+      labels: { rotate: -45 },
     },
-    yaxis: {
-      title: {
-        text: 'Number of Orders',
-      },
-      min: 0,
-    },
-    tooltip: {
-      enabled: false, // DISABLE TOOLTIPS
-    },
-    dataLabels: {
-      enabled: true, // SHOW DATA LABELS
-      offsetY: -5,
-      style: {
-        fontSize: '10px',
-        fontWeight: 600,
-      },
-      formatter: (val) => Math.round(val),
-    },
-    states: {
-      hover: {
-        filter: {
-          type: 'none', // NO HOVER
-        },
-      },
-    },
-    grid: {
-      borderColor: theme.palette.divider,
-      strokeDashArray: 4,
-    },
-  });
-
-  const hourlySeries = [
-    {
-      name: 'Orders',
-      type: 'bar',
-      data: hourlyOrders,
-    },
-  ];
-
-  // Prepare status pie chart data - NO HOVER
-  const statusColors = {
-    PLACED: theme.palette.success.main,
-    CONFIRMED: theme.palette.info.main,
-    PROCESSING: theme.palette.warning.main,
-    SHIPPED: theme.palette.secondary.main,
-    DELIVERED: theme.palette.success.dark,
-    CANCELLED: theme.palette.error.main,
-  };
-
-  const statusLabels = data?.orderStatus?.map(item => item._id) || [];
-  const statusSeries = data?.orderStatus?.map(item => item.count) || [];
-  const statusColorsArray = statusLabels.map(label => statusColors[label] || theme.palette.grey[500]);
-
-  const pieChartOptions = useChart({
-    labels: statusLabels,
-    colors: statusColorsArray,
-    chart: {
-      toolbar: {
-        show: false,
-      },
-    },
-    legend: {
-      position: 'bottom',
-      fontSize: '12px',
-    },
-    tooltip: {
-      enabled: false, // DISABLE TOOLTIPS
-    },
+    yaxis: { title: { text: 'Number of Orders' }, min: 0 },
+    tooltip: { enabled: false },
     dataLabels: {
       enabled: true,
-      style: {
-        fontSize: '11px',
-        fontWeight: 600,
-      },
-      formatter: (val, opts) => {
-        const percentage = ((val / statusSeries.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
-        return `${percentage}%`;
-      },
+      offsetY: -5,
+      style: { fontSize: '10px', fontWeight: 600 },
+      formatter: (val) => Math.round(val),
+    },
+    states: { hover: { filter: { type: 'none' } } },
+    grid: { borderColor: theme.palette.divider, strokeDashArray: 4 },
+  });
+
+  const hourlySeries = [{ name: 'Orders', type: 'bar', data: hourlyOrders }];
+
+  // Prepare status pie chart data
+  const statusLabels = data?.orderStatus?.map(item => item._id) || [];
+  const statusSeries = data?.orderStatus?.map(item => item.count) || [];
+  
+  const getStatusColor = (status) => {
+    const colors = {
+      'PLACED': '#00A76F',
+      'CONFIRMED': '#2065D1',
+      'PROCESSING': '#FFAB00',
+      'SHIPPED': '#8E24AA',
+      'DELIVERED': '#1E7E34',
+      'CANCELLED': '#FF4842',
+      'PENDING': '#919EAB',
+      'REFUNDED': '#FF6B4A',
+    };
+    return colors[status] || theme.palette.grey[500];
+  };
+  
+  const statusColorsArray = statusLabels.map(label => getStatusColor(label));
+  const totalOrdersForPie = statusSeries.reduce((a, b) => a + b, 0);
+
+  const pieChartOptions = useChart({
+    chart: { type: 'donut' },
+    colors: statusColorsArray,
+    labels: statusLabels,
+    legend: { show: false },
+    stroke: { colors: [theme.palette.background.paper], width: 2 },
+    dataLabels: {
+      enabled: true,
+      dropShadow: { enabled: false },
+      formatter: (val) => `${val.toFixed(1)}%`,
     },
     plotOptions: {
       pie: {
         donut: {
-          size: '70%',
+          size: '72%',
           labels: {
             show: true,
+            name: {
+              show: true,
+              fontSize: '14px',
+              fontWeight: '600',
+              color: theme.palette.text.secondary,
+            },
+            value: {
+              show: true,
+              fontSize: '20px',
+              fontWeight: '700',
+              color: theme.palette.text.primary,
+              formatter: (val) => val,
+            },
             total: {
               show: true,
-              label: 'Total',
-              formatter: () => statusSeries.reduce((a, b) => a + b, 0),
+              label: 'Total Orders',
+              fontSize: '12px',
+              fontWeight: '500',
+              color: theme.palette.text.secondary,
+              formatter: () => totalOrdersForPie,
             },
           },
         },
-        expandOnClick: false, // Disable expand on click
-        dataLabels: {
-          offset: -10,
-        },
       },
     },
-    states: {
-      hover: {
-        filter: {
-          type: 'none', // NO HOVER
-        },
-      },
-    },
-    responsive: [
-      {
-        breakpoint: 600,
-        options: {
-          dataLabels: {
-            enabled: false,
-          },
-        },
-      },
-    ],
+    tooltip: { enabled: false },
+    states: { hover: { filter: { type: 'none' } } },
   });
 
   if (loading) {
@@ -455,7 +347,6 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
     );
   }
 
-  // Check if chart has data
   const hasChartData = labels.length > 0 && orderSeries.length > 0;
 
   return (
@@ -477,10 +368,21 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
       />
 
       <Box sx={{ p: 3 }}>
-        {/* Summary Stats Cards */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.neutral' }}>
+        {/* Summary Stats Cards - Modified Grid to fit 5 cards nicely */}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={4} md={2.4}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.neutral' }}>
+              <Typography variant="caption" color="text.secondary" gutterBottom>
+                Total Visitors
+              </Typography>
+              <Typography variant="h4" color="info.main">
+                {visitorCount.toLocaleString()}
+              </Typography>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} sm={4} md={2.4}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.neutral' }}>
               <Typography variant="caption" color="text.secondary" gutterBottom>
                 Total Orders
               </Typography>
@@ -490,8 +392,8 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
             </Paper>
           </Grid>
           
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.neutral' }}>
+          <Grid item xs={12} sm={4} md={2.4}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.neutral' }}>
               <Typography variant="caption" color="text.secondary" gutterBottom>
                 Total Revenue
               </Typography>
@@ -501,10 +403,10 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
             </Paper>
           </Grid>
           
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.neutral' }}>
+          <Grid item xs={12} sm={6} md={2.4}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.neutral' }}>
               <Typography variant="caption" color="text.secondary" gutterBottom>
-                Average Order Value
+                Avg Order Value
               </Typography>
               <Typography variant="h4">
                 ₹{(data.summary?.averageOrderValue || 0).toFixed(2)}
@@ -512,8 +414,8 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
             </Paper>
           </Grid>
           
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.neutral' }}>
+          <Grid item xs={12} sm={6} md={2.4}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.neutral' }}>
               <Typography variant="caption" color="text.secondary" gutterBottom>
                 Cancel Rate
               </Typography>
@@ -559,20 +461,39 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
               <Typography variant="h6" gutterBottom>
                 Order Status Distribution
               </Typography>
-              {statusSeries.length > 0 && statusSeries.reduce((a, b) => a + b, 0) > 0 ? (
-                <Chart
-                  dir="ltr"
-                  type="donut"
-                  series={statusSeries}
-                  options={pieChartOptions}
-                  width="100%"
-                  height={320}
-                />
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Breakdown by order status
+              </Typography>
+              
+              {statusSeries.length > 0 && totalOrdersForPie > 0 ? (
+                <>
+                  <Chart
+                    type="donut"
+                    series={statusSeries}
+                    options={pieChartOptions}
+                    width="100%"
+                    height={340}
+                  />
+                  <Stack spacing={0.5} sx={{ mt: 2, maxHeight: 100, overflow: 'auto' }}>
+                    {statusLabels.map((label, idx) => {
+                      const percentage = ((statusSeries[idx] / totalOrdersForPie) * 100).toFixed(1);
+                      return (
+                        <Box key={label} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: statusColorsArray[idx] }} />
+                            <Typography variant="caption" color="text.secondary">{label}:</Typography>
+                          </Box>
+                          <Typography variant="caption" fontWeight="medium">
+                            {statusSeries[idx]} ({percentage}%)
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </>
               ) : (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 320 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No order data available
-                  </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 340 }}>
+                  <Typography variant="body2" color="text.secondary">No order status data available</Typography>
                 </Box>
               )}
             </Paper>
@@ -598,9 +519,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
                 />
               ) : (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 320 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No hourly data available
-                  </Typography>
+                  <Typography variant="body2" color="text.secondary">No hourly data available</Typography>
                 </Box>
               )}
             </Paper>
@@ -648,9 +567,7 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
                 </Box>
               ) : (
                 <Box sx={{ textAlign: 'center', py: 8 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No product data available
-                  </Typography>
+                  <Typography variant="body2" color="text.secondary">No product data available</Typography>
                 </Box>
               )}
             </Paper>
@@ -665,42 +582,26 @@ export default function ViewOrderAnalytics({ title, subheader, ...other }) {
               <Grid container spacing={2}>
                 <Grid item xs={6} md={3}>
                   <Stack spacing={0.5}>
-                    <Typography variant="caption" color="text.secondary">
-                      Total Delivery Fee Collected
-                    </Typography>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      ₹{(data.summary?.totalDeliveryFee || 0).toLocaleString()}
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Total Delivery Fee Collected</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold">₹{(data.summary?.totalDeliveryFee || 0).toLocaleString()}</Typography>
                   </Stack>
                 </Grid>
                 <Grid item xs={6} md={3}>
                   <Stack spacing={0.5}>
-                    <Typography variant="caption" color="text.secondary">
-                      Cancelled Orders Revenue
-                    </Typography>
-                    <Typography variant="subtitle1" color="error.main">
-                      ₹{(data.cancellation?.cancelledRevenue || 0).toLocaleString()}
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Cancelled Orders Revenue</Typography>
+                    <Typography variant="subtitle1" color="error.main">₹{(data.cancellation?.cancelledRevenue || 0).toLocaleString()}</Typography>
                   </Stack>
                 </Grid>
                 <Grid item xs={6} md={3}>
                   <Stack spacing={0.5}>
-                    <Typography variant="caption" color="text.secondary">
-                      Returning Customers
-                    </Typography>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {data.customers?.returningCustomers || 0}
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Returning Customers</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold">{data.customers?.returningCustomers || 0}</Typography>
                   </Stack>
                 </Grid>
                 <Grid item xs={6} md={3}>
                   <Stack spacing={0.5}>
-                    <Typography variant="caption" color="text.secondary">
-                      Avg Time to Deliver
-                    </Typography>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {data.fulfillment?.averageTimeToDeliverHours || 0} hours
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Avg Time to Deliver</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold">{data.fulfillment?.averageTimeToDeliverHours || 0} hours</Typography>
                   </Stack>
                 </Grid>
               </Grid>

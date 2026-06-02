@@ -275,25 +275,7 @@ export default function AppView() {
           />
         </Grid>
 
-        {/* Total Revenue */}
-        <Grid xs={12} sm={6} md={3}>
-          {/* <AppWidgetSummary
-            title="Total Revenue"
-            total={formatCurrency(dashboardStats.totalRevenue)}
-            color="primary"
-            icon=""
-          /> */}
-        </Grid>
-
-        {/* Total Orders */}
-        <Grid xs={12} sm={6} md={3}>
-          {/* <AppWidgetSummary
-            title="Total Orders"
-            total={dashboardStats.totalOrders}
-            color="success"
-            icon=""
-          /> */}
-        </Grid>
+       
 
         {/* Total Users */}
         <Grid xs={12} sm={6} md={3}>
@@ -306,25 +288,9 @@ export default function AppView() {
         </Grid>
 
         {/* Average Order Value */}
-        <Grid xs={12} sm={6} md={3}>
-          {/* <AppWidgetSummary
-            title="Avg Order Value"
-            total={formatCurrency(dashboardStats.averageOrderValue)}
-            color="warning"
-            icon=""
-          /> */}
-        </Grid>
 
         {/* Cancelled Orders */}
-        <Grid xs={12} sm={6} md={3}>
-          {/* <AppWidgetSummary
-            title="Cancelled Orders"
-            total={dashboardStats.cancelledOrders}
-            color="error"
-            icon=""
-          /> */}
-        </Grid>
-
+       
         {/* Order Analytics Chart */}
         <Grid xs={12} md={12} lg={12}>
           <ViewOrderAnalytics
@@ -333,77 +299,10 @@ export default function AppView() {
           />
         </Grid>
 
-        {/* Top Products */}
-        {/* <Grid xs={12} md={6}>
-          <TopProductsTable products={dashboardStats.topProducts} />
-        </Grid> */}
+       
 
-        {/* Order Status Breakdown */}
-        {/* <Grid xs={12} md={6}>
-          <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Order Status Breakdown</Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell><strong>Status</strong></TableCell>
-                    <TableCell align="right"><strong>Count</strong></TableCell>
-                    <TableCell align="right"><strong>Percentage</strong></TableCell>
-                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Object.entries(dashboardStats.orderStatusBreakdown).map(([status, count]) => {
-                    const percentage = dashboardStats.totalOrders > 0 
-                      ? ((count / dashboardStats.totalOrders) * 100).toFixed(1) 
-                      : 0;
-                    return (
-                      <TableRow key={status}>
-                        <TableCell><OrderStatusChip status={status} /></TableCell>
-                        <TableCell align="right">{count.toLocaleString()}</TableCell>
-                        <TableCell align="right">{percentage}%</TableCell>
-                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Card>
-        </Grid> */}
-
-        {/* Recent Orders */}
-        {/* <Grid xs={12}>
-          <RecentOrdersTable orders={recentOrders} />
-        </Grid> */}
-
-        {/* Quick Stats Summary */}
-        {/* <Grid xs={12}>
-          <Card sx={{ p: 3, bgcolor: 'primary.main', color: 'white' }}>
-            <Grid container spacing={3}>
-              <Grid xs={12} sm={4}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                  Recent Revenue (30 days)
-                </Typography>
-                <Typography variant="h5">{formatCurrency(dashboardStats.recentRevenue)}</Typography>
-              </Grid>
-              <Grid xs={12} sm={4}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                  Recent Orders (30 days)
-                </Typography>
-                <Typography variant="h5">{dashboardStats.recentOrdersCount}</Typography>
-              </Grid>
-              <Grid xs={12} sm={4}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                  Completion Rate
-                </Typography>
-                <Typography variant="h5">
-                  {dashboardStats.totalOrders > 0 
-                    ? ((1 - dashboardStats.cancelledOrders / dashboardStats.totalOrders) * 100).toFixed(1)
-                    : 0}%
-                </Typography>
-              </Grid>
-            </Grid>
-          </Card>
-        </Grid> */}
+       
+        
       </Grid>
     </Container>
   );
