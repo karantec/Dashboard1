@@ -55,9 +55,7 @@ import {
 const FILE_FIELD = 'images';
 
 // Base URL for the product API (matches app.use("/api/product", ...))
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api') + '/product';
-
+const API_BASE_URL =(import.meta.env.VITE_API_BASE_URL || 'https://lifestyle-backend-lime.vercel.app/api') + '/product';
 // ─── Static options ───────────────────────────────────────────────
 const CUSTOMIZATION_TYPES = [
   'radio',
