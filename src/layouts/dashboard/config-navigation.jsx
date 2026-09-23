@@ -40,7 +40,7 @@ const navConfig = [
   //   icon: icon('ic_user'),
   // },
   {
-    title: 'SubCategory Of products',
+    title: 'Slide',
     path: '/subcategory',
     icon: icon('ic_user'),
   },

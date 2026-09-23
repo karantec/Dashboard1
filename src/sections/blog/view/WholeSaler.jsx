@@ -23,7 +23,7 @@ import {
 
 // ✅ API BASE URL — uses env var with localhost fallback
 const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api') + '/category';
+  (import.meta.env.VITE_API_BASE_URL || 'https://lifestyle-backend-lime.vercel.app/api') + '/category';
 
 // 🔥 Category API
 const categoryApi = {

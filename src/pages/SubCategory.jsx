@@ -30,7 +30,7 @@ import {
 
 // ✅ API BASE URL — matches your routes: app.use("/api/slider", ...)
 const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api') + '/slider';
+  (import.meta.env.VITE_API_BASE_URL || 'https://lifestyle-backend-lime.vercel.app/api') + '/slider';
 
 // 🔥 Slider API
 const sliderApi = {
