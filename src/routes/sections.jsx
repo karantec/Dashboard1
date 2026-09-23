@@ -9,7 +9,10 @@ import DashboardLayout from 'src/layouts/dashboard';
 import ProtectedRoute from './ProtectedRoute';
 import CoupanPage from 'src/pages/Coupan';
 import WholeSalePage from 'src/pages/WholeSale';
-import WholesaleCouponManager from 'src/pages/GeneratewholSaleCoupan';
+
+import CategoryPage from 'src/sections/blog/view/WholeSaler';
+import SliderPage from 'src/pages/SliderPage';
+import TickerBarManager from 'src/pages/GeneratewholSaleCoupan';
 
 
 // Import pages
@@ -46,10 +49,10 @@ export default function Router() {
       children: [
         { element: <IndexPage />, index: true },
         { path: 'user', element: <UserPage /> },
-        { path: 'Banner', element: <Banner /> },
+        { path: 'Banner', element: <SliderPage /> },
 
-        { path: 'Generatewholesalecoupan', element: <WholesaleCouponManager /> },
-        { path: 'Category', element: <Category /> },
+        { path: 'TicketManager', element: <TickerBarManager /> },
+        { path: 'Category', element: <CategoryPage /> },
         { path: 'subcategory', element: <SubCategory /> },
         { path: 'products', element: <Product /> },
         { path: 'VendorList', element: <Vendor /> },

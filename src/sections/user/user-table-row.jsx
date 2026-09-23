@@ -1,5 +1,5 @@
+/* eslint-disable react/prop-types */
 import { useState } from 'react';
-import PropTypes from 'prop-types';
 
 import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
@@ -10,112 +10,80 @@ import MenuItem from '@mui/material/MenuItem';
 import TableCell from '@mui/material/TableCell';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+// eslint-disable-next-line perfectionist/sort-imports
+import Chip from '@mui/material/Chip';
 
-import Label from 'src/components/label';
 import Iconify from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export default function UserTableRow({
   selected,
-  id,
-  phoneNumber,
-  isVerified,
-  isAdmin,
+  name,
+  email,
+  phone,
+  avatar,
   role,
   createdAt,
   updatedAt,
   handleClick,
-  sx,
 }) {
   const [open, setOpen] = useState(null);
 
-  const handleOpenMenu = (event) => {
-    setOpen(event.currentTarget);
-  };
+  const handleOpenMenu = (event) => setOpen(event.currentTarget);
+  const handleCloseMenu = () => setOpen(null);
 
-  const handleCloseMenu = () => {
-    setOpen(null);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch (error) {
-      return 'Invalid Date';
-    }
-  };
-
-  console.log('UserTableRow - Phone Number:', phoneNumber);
+  const formatDate = (d) =>
+    d
+      ? new Date(d).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })
+      : '—';
 
   return (
     <>
-      <TableRow hover tabIndex={-1} role="checkbox" selected={selected} sx={sx}>
+      <TableRow hover tabIndex={-1} role="checkbox" selected={selected}>
+        {/* 1. Checkbox */}
         <TableCell padding="checkbox">
           <Checkbox disableRipple checked={selected} onChange={handleClick} />
         </TableCell>
 
-        {/* User ID */}
-        <TableCell component="th" scope="row">
+        {/* 2. Name + Avatar */}
+        <TableCell component="th" scope="row" padding="none">
           <Stack direction="row" alignItems="center" spacing={2}>
-            <Avatar sx={{ bgcolor: '#dc2626' }}>
-              {phoneNumber ? phoneNumber.slice(-2) : '??'}
+            <Avatar alt={name} src={avatar || undefined}>
+              {name?.charAt(0)?.toUpperCase() || 'U'}
             </Avatar>
             <Typography variant="subtitle2" noWrap>
-              {id}
+              {name || '—'}
             </Typography>
           </Stack>
         </TableCell>
 
-        {/* Phone Number */}
-        <TableCell>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            {phoneNumber || 'N/A'}
-          </Typography>
-        </TableCell>
+        {/* 3. Email */}
+        <TableCell>{email || '—'}</TableCell>
 
-        {/* Verified Status */}
+        {/* 4. Phone */}
+        <TableCell>{phone || '—'}</TableCell>
+
+        {/* 5. Role */}
         <TableCell align="center">
-          <Label color={isVerified ? 'success' : 'error'}>
-            {isVerified ? 'Yes' : 'No'}
-          </Label>
+          <Chip
+            label={role}
+            size="small"
+            color={role === 'admin' ? 'error' : 'default'}
+          />
         </TableCell>
 
-        {/* Admin Status */}
-        <TableCell align="center">
-          <Label color={isAdmin ? 'info' : 'default'}>
-            {isAdmin ? 'Yes' : 'No'}
-          </Label>
-        </TableCell>
+        {/* 6. Created At */}
+        <TableCell>{formatDate(createdAt)}</TableCell>
 
-        {/* Role */}
-        <TableCell align="center">
-          <Typography variant="body2" sx={{ textTransform: 'uppercase' }}>
-            {role || 'USER'}
-          </Typography>
-        </TableCell>
+        {/* 7. Updated At */}
+        <TableCell>{formatDate(updatedAt)}</TableCell>
 
-        {/* Created At */}
-        <TableCell>
-          <Typography variant="body2" color="text.secondary">
-            {formatDate(createdAt)}
-          </Typography>
-        </TableCell>
-
-        {/* Updated At */}
-        <TableCell>
-          <Typography variant="body2" color="text.secondary">
-            {formatDate(updatedAt)}
-          </Typography>
-        </TableCell>
-
-        {/* Actions */}
+        {/* 8. Actions */}
         <TableCell align="center">
           <IconButton onClick={handleOpenMenu}>
             <Iconify icon="eva:more-vertical-fill" />
@@ -123,15 +91,13 @@ export default function UserTableRow({
         </TableCell>
       </TableRow>
 
+      {/* Row Actions Menu */}
       <Popover
         open={!!open}
         anchorEl={open}
         onClose={handleCloseMenu}
         anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{
-          sx: { width: 140 },
-        }}
       >
         <MenuItem onClick={handleCloseMenu}>
           <Iconify icon="eva:edit-fill" sx={{ mr: 2 }} />
@@ -146,16 +112,3 @@ export default function UserTableRow({
     </>
   );
 }
-
-UserTableRow.propTypes = {
-  selected: PropTypes.bool,
-  id: PropTypes.string,
-  phoneNumber: PropTypes.string,
-  isVerified: PropTypes.bool,
-  isAdmin: PropTypes.bool,
-  role: PropTypes.string,
-  createdAt: PropTypes.string,
-  updatedAt: PropTypes.string,
-  handleClick: PropTypes.func,
-  sx: PropTypes.object,
-};

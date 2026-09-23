@@ -1,10 +1,16 @@
 // src/services/ProductService.js
 import axios from 'axios';
 
+// Reads from Vite env, falls back to local backend
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'https://lifestyle-backend-lime.vercel.app/api';
+
 const API = axios.create({
-  baseURL: 'https://my-project-backend-ee4t.onrender.com/api',
+  baseURL: BASE_URL,
+  withCredentials: true,
 });
 
+// Attach admin token if present
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('adminToken');
   if (token) {
@@ -13,201 +19,86 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT CRUD OPERATIONS
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// PRODUCT CRUD
+// Routes: GET/POST /api/product
+//         GET/PUT/DELETE /api/product/:id
+// ─────────────────────────────────────────────
 
-// Get all products with filters
+/**
+ * GET /api/product
+ * Optional filters become query params (e.g. { category, wholesalerId })
+ */
 export const getProduct = async (filters = {}) => {
-  const queryParams = new URLSearchParams(filters).toString();
-  const url = queryParams ? `/product?${queryParams}` : '/product';
+  const qs = new URLSearchParams(filters).toString();
+  const url = qs ? `/product?${qs}` : '/product';
   const res = await API.get(url);
-  return res.data;
+  return res.data; // { success, count, data: [...] }
 };
 
-// Get product by ID
+/**
+ * GET /api/product/:id
+ */
 export const getProductById = async (id) => {
   const res = await API.get(`/product/${id}`);
-  return res.data;
+  return res.data; // { success, data: {...} }
 };
 
-// Create product (ADMIN ONLY)
-export const createProduct = async (payload) => {
-  const res = await API.post('/product/create', payload);
-  return res.data;
+/**
+ * POST /api/product
+ * @param {FormData} formData — text fields + JSON arrays + `images` files
+ * Axios auto-sets multipart boundary; do NOT set Content-Type manually.
+ */
+export const createProduct = async (formData) => {
+  const res = await API.post('/product', formData);
+  return res.data; // { success, message, data: {...} }
 };
 
-// Update product (ADMIN ONLY)
-export const updateProduct = async (id, payload) => {
-  const res = await API.put(`/product/${id}`, payload);
-  return res.data;
+/**
+ * PUT /api/product/:id
+ * @param {FormData} formData — same shape as create, files optional
+ */
+export const updateProduct = async (id, formData) => {
+  const res = await API.put(`/product/${id}`, formData);
+  return res.data; // { success, message, data: {...} }
 };
 
-// Delete product (ADMIN ONLY)
+/**
+ * DELETE /api/product/:id
+ * Also removes associated Supabase media files (server-side).
+ */
 export const deleteProduct = async (id) => {
   const res = await API.delete(`/product/${id}`);
-  return res.data;
+  return res.data; // { success, message }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FILTERED PRODUCT ENDPOINTS
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Get products by category
-export const getProductsByCategory = async (categoryId) => {
-  const res = await API.get(`/product/category/${categoryId}`);
-  return res.data;
-};
-
-// Get products by subcategory
-export const getProductsBySubCategory = async (subCategoryId) => {
-  const res = await API.get(`/product/subcategory/${subCategoryId}`);
-  return res.data;
-};
-
-// Get products by multiple subcategories (query param)
-export const getProductsBySubCategories = async (subCategoryIds) => {
-  const ids = Array.isArray(subCategoryIds) ? subCategoryIds.join(',') : subCategoryIds;
-  const res = await API.get(`/product/subcategories?subCategories=${ids}`);
-  return res.data;
-};
-
-// Get popular products
-export const getPopularProducts = async () => {
-  const res = await API.get('/product/popular/all');
-  return res.data;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WHOLESALER API ENDPOINTS
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Get all wholesalers for dropdown
-export const getWholesalers = async () => {
-  try {
-    const res = await API.get('/wholesalers');
-    return res.data;
-  } catch (error) {
-    console.error('Error fetching wholesalers:', error);
-    throw error;
-  }
-};
-
-// Get single wholesaler by ID
-export const getWholesalerById = async (id) => {
-  try {
-    const res = await API.get(`/wholesalers/${id}`);
-    return res.data;
-  } catch (error) {
-    console.error('Error fetching wholesaler:', error);
-    throw error;
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WHOLESALER PRICE MANAGEMENT (NEW - Optional)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Get wholesale price for a specific product and wholesaler
-export const getWholesalerPrice = async (productId, wholesalerId) => {
-  try {
-    const res = await API.get(`/product/${productId}/wholesaler/${wholesalerId}/price`);
-    return res.data;
-  } catch (error) {
-    console.error('Error fetching wholesaler price:', error);
-    throw error;
-  }
-};
-
-// Add or update wholesale price for a product
-export const updateWholesalerPrice = async (productId, wholesalerId, wholesalePrice) => {
-  try {
-    const res = await API.put(`/product/${productId}/wholesaler-price`, {
-      wholesalerId,
-      wholesalePrice,
-    });
-    return res.data;
-  } catch (error) {
-    console.error('Error updating wholesaler price:', error);
-    throw error;
-  }
-};
-
-// Remove wholesale price for a product
-export const removeWholesalerPrice = async (productId, wholesalerId) => {
-  try {
-    const res = await API.delete(`/product/${productId}/wholesaler/${wholesalerId}/price`);
-    return res.data;
-  } catch (error) {
-    console.error('Error removing wholesaler price:', error);
-    throw error;
-  }
-};
-
-// Get products by wholesaler (filter products that have pricing for a specific wholesaler)
-export const getProductsByWholesaler = async (wholesalerId) => {
-  try {
-    const res = await API.get(`/product?wholesalerId=${wholesalerId}`);
-    return res.data;
-  } catch (error) {
-    console.error('Error fetching products by wholesaler:', error);
-    throw error;
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT UTILITIES
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Compute price with customizations
-export const computePrice = async (productId, selectedOptions) => {
-  const res = await API.post(`/product/${productId}/compute-price`, selectedOptions);
-  return res.data;
-};
-
-// Toggle product active status
+// ─────────────────────────────────────────────
+// TOGGLE ACTIVE
+// No dedicated route exists, so we compose:
+//   GET /:id  → read current `active`
+//   PUT /:id  → send only { active: !current } as FormData
+// The controller preserves every other field from the DB row.
+// ─────────────────────────────────────────────
 export const toggleProductStatus = async (productId) => {
-  const res = await API.patch(`/product/${productId}/toggle-status`);
-  return res.data;
+  const currentRes = await getProductById(productId);
+  const current = currentRes?.data || currentRes;
+  const newActive = !current.active;
+
+  const fd = new FormData();
+  fd.append('active', String(newActive));
+
+  const res = await API.put(`/product/${productId}`, fd);
+  return res.data?.data || res.data; // has `.active`
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BULK OPERATIONS (Optional - if needed)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Bulk update products status
-export const bulkUpdateProductStatus = async (productIds, active) => {
-  const res = await API.patch('/product/bulk/status', { productIds, active });
-  return res.data;
-};
-
-// Bulk delete products
-export const bulkDeleteProducts = async (productIds) => {
-  const res = await API.delete('/product/bulk', { data: { productIds } });
-  return res.data;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EXPORT ALL FUNCTIONS
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// DEFAULT EXPORT
+// ─────────────────────────────────────────────
 export default {
   getProduct,
   getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
-  getProductsByCategory,
-  getProductsBySubCategory,
-  getProductsBySubCategories,
-  getPopularProducts,
-  getWholesalers,
-  getWholesalerById,
-  getWholesalerPrice,
-  updateWholesalerPrice,
-  removeWholesalerPrice,
-  getProductsByWholesaler,
-  computePrice,
   toggleProductStatus,
-  bulkUpdateProductStatus,
-  bulkDeleteProducts,
 };

@@ -1,3 +1,4 @@
+/* eslint-disable perfectionist/sort-imports */
 // src/sections/login/LoginView.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,12 +11,9 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import LoadingButton from '@mui/lab/LoadingButton';
 import InputAdornment from '@mui/material/InputAdornment';
-// eslint-disable-next-line perfectionist/sort-imports
-import { adminLogin } from 'src/services/authService';
 
-// eslint-disable-next-line perfectionist/sort-imports
 import { setToken, getToken } from 'src/utils/auth';
-// eslint-disable-next-line perfectionist/sort-imports
+import { adminLogin } from 'src/services/authService';
 import Iconify from 'src/components/iconify';
 
 // ─── Design Tokens ───────────────────────────────────────────────────────────
@@ -31,9 +29,9 @@ export default function LoginView() {
 
   useEffect(() => {
     if (getToken()) {
-      navigate('/admin/dashboard', { replace: true });
+      navigate('/', { replace: true });
     }
-}, [navigate]);
+  }, [navigate]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
@@ -46,15 +44,37 @@ export default function LoginView() {
     setError('');
     setLoading(true);
     try {
-      const data = await adminLogin(email, password);
-      if (!data?.token || data?.user?.role !== 'ADMIN') {
-        setError('Unauthorized access');
+      const response = await adminLogin(email, password);
+
+      // 👇 Match the new backend response shape:
+      // { success: true, message: "...", token: "...", data: { _id, name, email, role } }
+      if (!response?.token) {
+        setError('Invalid response from server');
         return;
       }
-      setToken(data.token);
+
+      const admin = response.data;
+      if (!admin || admin.role !== 'admin') {
+        setError('Unauthorized: Not an admin account');
+        return;
+      }
+
+      // Save token — used by axios interceptor as `adminToken`
+      setToken(response.token);
+
+      // Optional: store admin info for the header/sidebar
+      localStorage.setItem('adminUser', JSON.stringify(admin));
+
+      // Redirect to dashboard
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      // Read message from our backend's error shape: { success, message }
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Login failed';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -68,7 +88,6 @@ export default function LoginView() {
       `}</style>
 
       <Box sx={{ display: 'flex', minHeight: '100vh', fontFamily: "'DM Sans', sans-serif" }}>
-
         {/* ── Left Panel ─────────────────────────────────────────────────── */}
         <Box
           sx={{
@@ -78,7 +97,7 @@ export default function LoginView() {
             justifyContent: 'space-between',
             p: 5,
             background: `linear-gradient(160deg, ${GOLD} 0%, ${GOLD_DARK} 40%, #8c6b3a 100%)`,
-            position: 'relative',
+          position: 'relative',
             overflow: 'hidden',
             '&::before': {
               content: '""',
@@ -112,9 +131,7 @@ export default function LoginView() {
               zIndex: 1,
             }}
           >
-            
             <Box>
-             
               <Typography
                 sx={{
                   fontSize: 9, fontWeight: 300,
@@ -167,14 +184,7 @@ export default function LoginView() {
             >
               🖨️
             </Box>
-            <Box>
-              {/* <Typography sx={{ fontSize: 13, fontWeight: 500, color: '#fff', mb: 0.25 }}>
-                Dubai&apos;s Trusted Print Partner
-              </Typography>
-              <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>
-                400gsm · Matt Coating · Elegant Finish
-              </Typography> */}
-            </Box>
+            <Box />
           </Box>
         </Box>
 
@@ -190,7 +200,6 @@ export default function LoginView() {
           }}
         >
           <Box sx={{ width: '100%', maxWidth: 380 }}>
-
             {/* Header */}
             <Box sx={{ mb: 4 }}>
               <Box
@@ -226,7 +235,6 @@ export default function LoginView() {
             {/* Form */}
             <form onSubmit={handleSubmit}>
               <Stack spacing={2.5}>
-
                 {/* Email */}
                 <Box>
                   <Typography
@@ -242,7 +250,7 @@ export default function LoginView() {
                   <TextField
                     fullWidth
                     type="email"
-                    placeholder="admin@dlxprint.com"
+                    placeholder="admin@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     variant="outlined"
@@ -360,22 +368,10 @@ export default function LoginView() {
                 >
                   Sign In to Dashboard
                 </LoadingButton>
-
               </Stack>
             </form>
-
-            {/* <Typography
-              sx={{
-                textAlign: 'center', fontSize: 11,
-                color: '#a89880', mt: 3, fontWeight: 300,
-              }}
-            >
-              Authorized personnel only · Deluxe Printing UAE
-            </Typography> */}
-
           </Box>
         </Box>
-
       </Box>
     </>
   );

@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Stack,
@@ -13,118 +13,97 @@ import {
   Grid,
   Card,
   CardContent,
+  CardMedia,
   Chip,
   Snackbar,
   Alert,
   Box,
   IconButton,
-  InputAdornment,
-} from "@mui/material";
+} from '@mui/material';
 
-// ✅ API BASE URL
-const API_BASE_URL = "https://my-project-backend-ee4t.onrender.com/api/wholesalers";
+// ✅ API BASE URL — uses env var with localhost fallback
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api') + '/category';
 
-// 🔥 Wholesaler API
-const wholesalerApi = {
-  register: async (data) => {
-    const res = await fetch(`${API_BASE_URL}/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
-    }
-
-    return res.json();
-  },
-
+// 🔥 Category API
+const categoryApi = {
+  // GET all categories
   getAll: async () => {
     const res = await fetch(API_BASE_URL);
-
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
-    }
-
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     const data = await res.json();
-    console.log('API Response:', data);
-    
-    if (data.success && data.wholesalers) {
-      return data.wholesalers;
-    }
-    if (data.wholesalers) {
-      return data.wholesalers;
-    }
-    if (Array.isArray(data)) {
-      return data;
-    }
-    if (data.data && Array.isArray(data.data)) {
-      return data.data;
-    }
+
+    if (data.success && Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data)) return data;
     return [];
   },
 
-  update: async (id, data) => {
-    const token = localStorage.getItem("adminToken") || localStorage.getItem("token");
-    
-    console.log("Update - Token being sent:", token ? "Token exists" : "No token found");
-    console.log("Update data being sent:", JSON.stringify(data, null, 2));
-
-    const res = await fetch(`${API_BASE_URL}/${id}`, {
-      method: "PUT",
+  // POST — create (multipart/form-data with image file)
+  create: async (formData) => {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch(API_BASE_URL, {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        // ⚠️ Do NOT set Content-Type — browser sets multipart boundary automatically
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(data),
+      body: formData,
     });
 
     if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
     }
-
     return res.json();
   },
 
+  // PUT — update (multipart/form-data)
+  update: async (id, formData) => {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch(`${API_BASE_URL}/${id}`, {
+      method: 'PUT',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  // DELETE
   delete: async (id) => {
-    const token = localStorage.getItem("adminToken") || localStorage.getItem("token");
-    
-    console.log("Delete - Token being sent:", token ? "Token exists" : "No token found");
-
+    const token = localStorage.getItem('adminToken');
     const res = await fetch(`${API_BASE_URL}/${id}`, {
-      method: "DELETE",
+      method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
 
     if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
     }
-
     return res.json();
   },
 };
 
+// Form defaults
 const defaultForm = {
-  storeName: "",
-  email: "",
-  pin: "",
-  phoneNumber: "",
-  city: "",
-  pincode: "",
-  state: "",
-  address: "",
+  name: '',
+  display_order: 0,
+  image: null,
+  previewUrl: '',
 };
 
-export default function WholesalerRegistration() {
-  const [wholesalers, setWholesalers] = useState([]);
+export default function CategoryPage() {
+  const [categories, setCategories] = useState([]);
   const [open, setOpen] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [form, setForm] = useState(defaultForm);
@@ -132,40 +111,40 @@ export default function WholesalerRegistration() {
   const [editingId, setEditingId] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
-    message: "",
-    severity: "success",
+    message: '',
+    severity: 'success',
   });
   const [loading, setLoading] = useState(false);
-  const [showPin, setShowPin] = useState(false);
-  const [showPinInList, setShowPinInList] = useState({});
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
+  const addFileRef = useRef(null);
+  const editFileRef = useRef(null);
+
   useEffect(() => {
-    const adminToken = localStorage.getItem("adminToken") || localStorage.getItem("token");
-    if (adminToken) {
-      setIsAdminAuthenticated(true);
-    }
-    fetchWholesalers();
+    const adminToken = localStorage.getItem('adminToken');
+    if (adminToken) setIsAdminAuthenticated(true);
+    fetchCategories();
   }, []);
 
-  const fetchWholesalers = async () => {
+  // ─── Fetch ──────────────────────────────────────────────
+  const fetchCategories = async () => {
     setLoading(true);
     try {
-      const data = await wholesalerApi.getAll();
-      console.log('Fetched wholesalers:', data);
-      setWholesalers(Array.isArray(data) ? data : []);
+      const data = await categoryApi.getAll();
+      setCategories(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Fetch error:", err);
-      showSnackbar(err.message || "Failed to fetch wholesalers", "error");
+      console.error('Fetch error:', err);
+      showSnackbar(err.message || 'Failed to fetch categories', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const showSnackbar = (message, severity = "success") => {
+  const showSnackbar = (message, severity = 'success') => {
     setSnackbar({ open: true, message, severity });
   };
 
+  // ─── Form Change Handlers ───────────────────────────────
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -174,597 +153,572 @@ export default function WholesalerRegistration() {
     setEditForm({ ...editForm, [e.target.name]: e.target.value });
   };
 
-  // 🔥 Helper function to format wholesaler data for API
-  const formatWholesalerForAPI = (formData) => {
-    return {
-      storeName: formData.storeName,
-      email: formData.email,
-      pin: formData.pin,
-      phoneNumber: formData.phoneNumber,
-      city: formData.city,
-      pincode: formData.pincode,
-      address: formData.address,  // Will be stored in landmark field
-      state: formData.state,      // Will be stored in addresses array
-    };
-  };
+  const handleFilePick = (e, mode) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  // 🔥 REGISTER WHOLESALER
-  const handleRegister = async () => {
-    if (!form.storeName || !form.email || !form.pin || !form.phoneNumber || 
-        !form.city || !form.pincode || !form.state || !form.address) {
-      return showSnackbar("Please fill all required fields", "error");
-    }
-
-    if (form.pin.length < 4) {
-      return showSnackbar("PIN must be at least 4 characters long", "error");
-    }
-
-    if (form.phoneNumber.length !== 10) {
-      return showSnackbar("Phone number must be 10 digits", "error");
-    }
-
-    if (form.pincode.length !== 6) {
-      return showSnackbar("Pincode must be 6 digits", "error");
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(form.email)) {
-      return showSnackbar("Please enter a valid email address", "error");
-    }
-
-    setLoading(true);
-    try {
-      const formattedData = formatWholesalerForAPI(form);
-      console.log("Registering with data:", formattedData);
-      
-      const res = await wholesalerApi.register(formattedData);
-
-      if (res.token || res.success) {
-        showSnackbar("Wholesaler Registered Successfully!");
-        setOpen(false);
-        setForm(defaultForm);
-        fetchWholesalers();
-        
-        if (res.token) {
-          localStorage.setItem("wholesalerToken", res.token);
-        }
-        if (res.wholesaler) {
-          localStorage.setItem("wholesalerInfo", JSON.stringify(res.wholesaler));
-        }
-      } else {
-        showSnackbar(res.message || "Error registering wholesaler", "error");
-      }
-    } catch (err) {
-      console.error("Register error:", err);
-      showSnackbar(err.message || "Server error. Please try again.", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 🔥 UPDATE WHOLESALER
-  const handleUpdate = async () => {
-    if (!editForm.storeName || !editForm.email || !editForm.phoneNumber || 
-        !editForm.city || !editForm.pincode || !editForm.state || !editForm.address) {
-      return showSnackbar("Please fill all required fields", "error");
-    }
-
-    if (editForm.phoneNumber.length !== 10) {
-      return showSnackbar("Phone number must be 10 digits", "error");
-    }
-
-    if (editForm.pincode.length !== 6) {
-      return showSnackbar("Pincode must be 6 digits", "error");
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(editForm.email)) {
-      return showSnackbar("Please enter a valid email address", "error");
-    }
-
-    const adminToken = localStorage.getItem("adminToken") || localStorage.getItem("token");
-    if (!adminToken) {
-      showSnackbar("Admin not authenticated. Please login again.", "error");
+    // Validate type
+    const okType =
+      ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type) ||
+      /\.(jpg|jpeg|png|webp)$/i.test(file.name);
+    if (!okType) {
+      showSnackbar('Only JPG, PNG, or WebP images are allowed.', 'error');
       return;
     }
 
+    // Validate size (5 MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showSnackbar('Image must be under 5 MB.', 'error');
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    if (mode === 'add') {
+      setForm((prev) => ({ ...prev, image: file, previewUrl }));
+    } else {
+      setEditForm((prev) => ({ ...prev, image: file, previewUrl }));
+    }
+  };
+
+  const resetForm = () => {
+    setForm(defaultForm);
+    if (addFileRef.current) addFileRef.current.value = '';
+  };
+
+  const resetEditForm = () => {
+    setEditForm(defaultForm);
+    if (editFileRef.current) editFileRef.current.value = '';
+  };
+
+  // ─── Build FormData ─────────────────────────────────────
+  const buildFormData = (data) => {
+    const fd = new FormData();
+    fd.append('name', (data.name || '').trim());
+    fd.append('display_order', String(data.display_order || 0));
+    if (data.image) fd.append('image', data.image);
+    return fd;
+  };
+
+  // ─── CREATE ─────────────────────────────────────────────
+  const handleCreate = async () => {
+    if (!form.name.trim()) {
+      return showSnackbar('Category name is required', 'error');
+    }
+
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      return showSnackbar('Admin not authenticated. Please login again.', 'error');
+    }
+
     setLoading(true);
     try {
-      // Format data to match backend schema
-      const updateData = {
-        storeName: editForm.storeName,
-        email: editForm.email,
-        phoneNumber: editForm.phoneNumber,
-        city: editForm.city,
-        pincode: editForm.pincode,
-        address: editForm.address,  // Will be stored in landmark field
-        state: editForm.state,      // Will be stored in addresses array
-      };
-      
-      // Only include pin if it was changed
-      if (editForm.pin && editForm.pin !== "••••" && editForm.pin.length >= 4) {
-        updateData.pin = editForm.pin;
-      }
-      
-      console.log("Sending update data:", JSON.stringify(updateData, null, 2));
-      const res = await wholesalerApi.update(editingId, updateData);
-      
-      if (res.success) {
-        showSnackbar("Wholesaler Updated Successfully!");
-        setOpenEdit(false);
-        setEditForm(defaultForm);
-        setEditingId(null);
-        fetchWholesalers();
+      const fd = buildFormData(form);
+      const res = await categoryApi.create(fd);
+
+      if (res.success || res.data || res._id) {
+        showSnackbar('Category created successfully!');
+        setOpen(false);
+        resetForm();
+        fetchCategories();
       } else {
-        showSnackbar(res.message || "Error updating wholesaler", "error");
+        showSnackbar(res.message || 'Error creating category', 'error');
       }
     } catch (err) {
-      console.error("Update error:", err);
-      showSnackbar(err.message || "Server error. Please try again.", "error");
+      console.error('Create error:', err);
+      showSnackbar(err.message || 'Server error. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // 🔥 DELETE WHOLESALER
-  const handleDelete = async (id, storeName) => {
-    if (window.confirm(`Are you sure you want to delete "${storeName}"?`)) {
-      const adminToken = localStorage.getItem("adminToken") || localStorage.getItem("token");
-      if (!adminToken) {
-        showSnackbar("Admin not authenticated. Please login again.", "error");
-        return;
-      }
+  // ─── UPDATE ─────────────────────────────────────────────
+  const handleUpdate = async () => {
+    if (!editForm.name.trim()) {
+      return showSnackbar('Category name is required', 'error');
+    }
 
-      setLoading(true);
-      try {
-        const res = await wholesalerApi.delete(id);
-        
-        if (res.success) {
-          showSnackbar("Wholesaler Deleted Successfully!");
-          fetchWholesalers();
-        } else {
-          showSnackbar(res.message || "Error deleting wholesaler", "error");
-        }
-      } catch (err) {
-        console.error("Delete error:", err);
-        showSnackbar(err.message || "Server error. Please try again.", "error");
-      } finally {
-        setLoading(false);
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      return showSnackbar('Admin not authenticated. Please login again.', 'error');
+    }
+
+    setLoading(true);
+    try {
+      const fd = buildFormData(editForm);
+      const res = await categoryApi.update(editingId, fd);
+
+      if (res.success || res.data || res._id) {
+        showSnackbar('Category updated successfully!');
+        setOpenEdit(false);
+        resetEditForm();
+        setEditingId(null);
+        fetchCategories();
+      } else {
+        showSnackbar(res.message || 'Error updating category', 'error');
       }
+    } catch (err) {
+      console.error('Update error:', err);
+      showSnackbar(err.message || 'Server error. Please try again.', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 🔥 OPEN EDIT DIALOG - Reads from correct locations
-  const openEditDialog = (wholesaler) => {
-    setEditingId(wholesaler._id);
-    
-    // Get address from the response (backend adds 'address' field)
-    const mainAddress = wholesaler.address || "";
-    
-    // Get state from addresses array if it exists
-    const defaultAddress = wholesaler.addresses && wholesaler.addresses[0] 
-      ? wholesaler.addresses[0] 
-      : {};
-    
-    console.log("Opening edit dialog with wholesaler:", {
-      storeName: wholesaler.storeName,
-      address: wholesaler.address,
-      pincode: wholesaler.pincode,
-      state: defaultAddress.state,
-    });
-    
+  // ─── DELETE ─────────────────────────────────────────────
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      return showSnackbar('Admin not authenticated. Please login again.', 'error');
+    }
+
+    setLoading(true);
+    try {
+      const res = await categoryApi.delete(id);
+      if (res.success || res._id || res.data) {
+        showSnackbar('Category deleted successfully!');
+        fetchCategories();
+      } else {
+        showSnackbar(res.message || 'Error deleting category', 'error');
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      showSnackbar(err.message || 'Server error. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Open Edit ──────────────────────────────────────────
+  const openEditDialog = (cat) => {
+    setEditingId(cat._id);
     setEditForm({
-      storeName: wholesaler.storeName || "",
-      email: wholesaler.email || "",
-      pin: wholesaler.pin || "••••",
-      phoneNumber: wholesaler.phoneNumber || "",
-      city: wholesaler.city || "",
-      pincode: wholesaler.pincode || "",
-      state: defaultAddress.state || "",
-      address: mainAddress,
+      name: cat.name || '',
+      display_order: cat.display_order ?? 0,
+      image: null, // user must pick a new file to replace
+      previewUrl: cat.image || '', // shows existing image
     });
     setOpenEdit(true);
   };
 
-  const handleTogglePinVisibility = () => {
-    setShowPin(!showPin);
-  };
-
-  const togglePinVisibilityInList = (wholesalerId) => {
-    setShowPinInList(prev => ({
-      ...prev,
-      [wholesalerId]: !prev[wholesalerId]
-    }));
-  };
-
   const handleAdminLogout = () => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("token");
+    localStorage.removeItem('adminToken');
     setIsAdminAuthenticated(false);
-    showSnackbar("Admin logged out successfully", "info");
+    showSnackbar('Admin logged out successfully', 'info');
   };
+
+  // ─── Reusable Form Renderer ─────────────────────────────
+  const renderForm = (data, onChange, fileRef, onFileChange, isEdit = false) => (
+    <Stack spacing={3} mt={1}>
+      <TextField
+        label="Category Name"
+        name="name"
+        value={data.name}
+        onChange={onChange}
+        fullWidth
+        required
+        autoFocus
+        placeholder="e.g., Gift Items"
+        helperText="Name shown to customers"
+      />
+
+      <TextField
+        label="Display Order"
+        name="display_order"
+        type="number"
+        value={data.display_order}
+        onChange={onChange}
+        fullWidth
+        helperText="Lower numbers appear first"
+        inputProps={{ min: 0 }}
+      />
+
+      <Box>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ mb: 1, display: 'block', fontWeight: 600 }}
+        >
+          Category Image {isEdit && '(leave empty to keep current)'}
+        </Typography>
+
+        <Stack direction="row" spacing={2} alignItems="center">
+          {/* Preview */}
+          <Box
+            sx={{
+              width: 110,
+              height: 110,
+              borderRadius: 2,
+              border: '2px dashed #e0d9ce',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              bgcolor: '#fafafa',
+              flexShrink: 0,
+            }}
+          >
+            {data.previewUrl ? (
+              <Box
+                component="img"
+                src={data.previewUrl}
+                alt="preview"
+                sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              <Typography variant="caption" color="text.secondary">
+                No image
+              </Typography>
+            )}
+          </Box>
+
+          {/* Upload controls */}
+          <Stack spacing={1}>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={onFileChange}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => fileRef.current?.click()}
+            >
+              {data.image ? 'Change Image' : 'Choose Image'}
+            </Button>
+            {data.image && (
+              <Button
+                variant="text"
+                size="small"
+                color="error"
+                onClick={() =>
+                  isEdit
+                    ? setEditForm((prev) => ({
+                        ...prev,
+                        image: null,
+                        previewUrl: '',
+                      }))
+                    : setForm((prev) => ({
+                        ...prev,
+                        image: null,
+                        previewUrl: '',
+                      }))
+                }
+              >
+                Remove
+              </Button>
+            )}
+          </Stack>
+        </Stack>
+      </Box>
+    </Stack>
+  );
 
   return (
     <Container maxWidth="lg">
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={4} flexWrap="wrap" gap={2}>
+      {/* Header */}
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={4}
+        flexWrap="wrap"
+        gap={2}
+      >
         <Box>
           <Typography variant="h4" gutterBottom fontWeight="bold">
-            Wholesaler Registration
+            Categories
           </Typography>
           <Typography variant="body2" color="textSecondary">
-            Join our B2B network and grow your business
+            Manage your product categories
           </Typography>
         </Box>
         <Stack direction="row" spacing={2} alignItems="center">
           {isAdminAuthenticated && (
-            <Chip 
-              label="Admin Mode" 
-              color="primary" 
+            <Chip
+              label="Admin Mode"
+              color="primary"
               size="medium"
               onDelete={handleAdminLogout}
             />
           )}
-          <Button 
-            variant="contained" 
-            onClick={() => setOpen(true)} 
+          <Button
+            variant="contained"
+            onClick={() => {
+              resetForm();
+              setOpen(true);
+            }}
             disabled={loading}
             size="large"
           >
-            Register New Wholesaler
+            + Add Category
           </Button>
         </Stack>
       </Stack>
 
       {/* STATS CARD */}
-      <Card sx={{ mb: 4, bgcolor: "#f5f5f5" }}>
+      <Card sx={{ mb: 4, bgcolor: '#f5f5f5' }}>
         <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
             <Box>
               <Typography variant="h6" color="primary" fontWeight="bold">
-                Total Wholesalers
+                Total Categories
               </Typography>
               <Typography variant="h3" fontWeight="bold">
-                {wholesalers.length}
+                {categories.length}
               </Typography>
             </Box>
-            <Chip 
-              label="Active Partners" 
-              color="success" 
+            <Chip
+              label="Active"
+              color="success"
               size="medium"
-              sx={{ fontSize: "1rem", py: 2, px: 1 }}
+              sx={{ fontSize: '1rem', py: 2, px: 1 }}
             />
           </Stack>
         </CardContent>
       </Card>
 
-      {/* WHOLESALER LIST */}
+      {/* LIST */}
       <Typography variant="h5" gutterBottom mb={2} fontWeight="bold">
-        Registered Wholesalers
+        All Categories
       </Typography>
-      
-      {loading && !wholesalers.length ? (
-        <Typography textAlign="center" py={4}>Loading wholesalers...</Typography>
+
+      {loading && !categories.length ? (
+        <Typography textAlign="center" py={4}>
+          Loading categories...
+        </Typography>
       ) : (
         <Grid container spacing={3}>
-          {wholesalers.length === 0 ? (
+          {categories.length === 0 ? (
             <Grid item xs={12}>
-              <Card sx={{ bgcolor: "#fafafa", textAlign: "center", py: 4 }}>
+              <Card sx={{ bgcolor: '#fafafa', textAlign: 'center', py: 4 }}>
                 <Typography color="textSecondary">
-                  No wholesalers registered yet. Be the first to register!
+                  No categories yet. Add your first one!
                 </Typography>
               </Card>
             </Grid>
           ) : (
-            wholesalers.map((w, index) => {
-              const defaultAddress = w.addresses && w.addresses[0] ? w.addresses[0] : {};
-              return (
-                <Grid item xs={12} sm={6} md={4} key={w._id || index}>
-                  <Card sx={{ height: "100%", transition: "0.3s", "&:hover": { boxShadow: 6 } }}>
-                    <CardContent>
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                        <Typography variant="h6" fontWeight="bold" gutterBottom>
-                          {w.storeName}
+            categories.map((cat, index) => (
+              <Grid item xs={12} sm={6} md={4} key={cat._id || index}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    transition: '0.3s',
+                    '&:hover': { boxShadow: 6 },
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {/* Image / fallback */}
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      pt: '60%',
+                      bgcolor: '#f5f5f5',
+                    }}
+                  >
+                    {cat.image ? (
+                      <CardMedia
+                        component="img"
+                        image={cat.image}
+                        alt={cat.name}
+                        sx={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 42,
+                          fontWeight: 700,
+                          color: '#c8a96e',
+                          bgcolor: '#1a1f2e',
+                        }}
+                      >
+                        {cat.name?.charAt(0)?.toUpperCase() || '?'}
+                      </Box>
+                    )}
+
+                    {/* Order badge */}
+                    <Chip
+                      label={`#${cat.display_order ?? 0}`}
+                      size="small"
+                      sx={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        bgcolor: 'rgba(26,31,46,0.85)',
+                        color: '#c8a96e',
+                        fontWeight: 700,
+                      }}
+                    />
+                  </Box>
+
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="flex-start"
+                      mb={2}
+                    >
+                      <Typography
+                        variant="h6"
+                        fontWeight="bold"
+                        gutterBottom
+                        noWrap
+                        title={cat.name}
+                      >
+                        {cat.name}
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={() => openEditDialog(cat)}
+                          sx={{ minWidth: '35px', p: '4px 8px' }}
+                          disabled={!isAdminAuthenticated}
+                        >
+                          ✏️
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => handleDelete(cat._id, cat.name)}
+                          sx={{ minWidth: '35px', p: '4px 8px' }}
+                          disabled={!isAdminAuthenticated}
+                        >
+                          🗑️
+                        </Button>
+                      </Stack>
+                    </Stack>
+
+                    <Stack spacing={1}>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary">
+                          Display Order
                         </Typography>
-                        <Stack direction="row" spacing={1}>
-                          <Chip label="Wholesaler" color="primary" size="small" />
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="primary"
-                            onClick={() => openEditDialog(w)}
-                            sx={{ minWidth: "35px", p: "4px 8px" }}
-                            disabled={!isAdminAuthenticated}
-                          >
-                            ✏️
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            onClick={() => handleDelete(w._id, w.storeName)}
-                            sx={{ minWidth: "35px", p: "4px 8px" }}
-                            disabled={!isAdminAuthenticated}
-                          >
-                            🗑️
-                          </Button>
-                        </Stack>
-                      </Stack>
-                      
-                      <Stack spacing={1.5}>
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">Email</Typography>
-                          <Typography variant="body2">{w.email}</Typography>
-                        </Box>
-                        
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">Phone Number</Typography>
-                          <Typography variant="body2">{w.phoneNumber}</Typography>
-                        </Box>
-                        
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">PIN</Typography>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <Typography variant="body2" fontWeight="bold" fontFamily="monospace">
-                              {showPinInList[w._id] ? w.pin : "••••"}
-                            </Typography>
-                            <IconButton size="small" onClick={() => togglePinVisibilityInList(w._id)} sx={{ p: 0.5 }}>
-                              <span>{showPinInList[w._id] ? "👁️" : "🔒"}</span>
-                            </IconButton>
-                          </Stack>
-                        </Box>
-                        
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">City</Typography>
-                          <Typography variant="body2">{w.city}</Typography>
-                        </Box>
+                        <Typography variant="body2">
+                          {cat.display_order ?? 0}
+                        </Typography>
+                      </Box>
 
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">Pincode</Typography>
-                          <Typography variant="body2">{w.pincode}</Typography>
-                        </Box>
-
-                        {defaultAddress.state && (
-                          <Box>
-                            <Typography variant="caption" color="textSecondary">State</Typography>
-                            <Typography variant="body2">{defaultAddress.state}</Typography>
-                          </Box>
-                        )}
-                        
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">Address</Typography>
-                          <Typography variant="body2">{w.address || "No address provided"}</Typography>
-                        </Box>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              );
-            })
+                      <Box>
+                        <Typography variant="caption" color="textSecondary">
+                          Created
+                        </Typography>
+                        <Typography variant="body2">
+                          {cat.created_at
+                            ? new Date(cat.created_at).toLocaleDateString(
+                                'en-IN'
+                              )
+                            : '—'}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))
           )}
         </Grid>
       )}
 
-      {/* REGISTRATION DIALOG */}
-      <Dialog open={open} onClose={() => !loading && setOpen(false)} fullWidth maxWidth="sm">
+      {/* CREATE DIALOG */}
+      <Dialog
+        open={open}
+        onClose={() => !loading && setOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>
-          <Typography variant="h5" fontWeight="bold">Wholesaler Registration</Typography>
-          <Typography variant="body2" color="textSecondary">Fill in the details to register as a wholesaler</Typography>
+          <Typography variant="h5" fontWeight="bold">
+            Add Category
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Create a new category for your products
+          </Typography>
         </DialogTitle>
 
         <DialogContent>
-          <Stack spacing={3} mt={1}>
-            <TextField
-              label="Store Name"
-              name="storeName"
-              value={form.storeName}
-              onChange={handleChange}
-              fullWidth
-              required
-              placeholder="e.g., City Wholesale Mart"
-              helperText="Your business/store name"
-            />
-
-            <TextField
-              label="Email Address"
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleChange}
-              fullWidth
-              required
-              placeholder="wholesaler@business.com"
-              helperText="Used for login and communications"
-            />
-
-            <TextField
-              label="Phone Number"
-              name="phoneNumber"
-              value={form.phoneNumber}
-              onChange={handleChange}
-              fullWidth
-              required
-              placeholder="9876543210"
-              helperText="10-digit mobile number"
-              inputProps={{ maxLength: 10 }}
-            />
-
-            <TextField
-              label="PIN (4+ characters)"
-              name="pin"
-              type={showPin ? "text" : "password"}
-              value={form.pin}
-              onChange={handleChange}
-              fullWidth
-              required
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={handleTogglePinVisibility} edge="end">
-                      {showPin ? "👁️" : "🔒"}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-              helperText="Minimum 4 characters - keep it secure"
-            />
-
-            <TextField
-              label="City"
-              name="city"
-              value={form.city}
-              onChange={handleChange}
-              fullWidth
-              required
-              placeholder="Mumbai, Delhi, Bengaluru"
-            />
-
-            <TextField
-              label="Pincode"
-              name="pincode"
-              value={form.pincode}
-              onChange={handleChange}
-              fullWidth
-              required
-              placeholder="400001"
-              helperText="6-digit pincode"
-              inputProps={{ maxLength: 6 }}
-            />
-
-            <TextField
-              label="State"
-              name="state"
-              value={form.state}
-              onChange={handleChange}
-              fullWidth
-              required
-              placeholder="Maharashtra"
-            />
-
-            <TextField
-              label="Full Address"
-              name="address"
-              value={form.address}
-              onChange={handleChange}
-              fullWidth
-              required
-              multiline
-              rows={3}
-              placeholder="Street address, warehouse location, landmark"
-              helperText="Complete business address"
-            />
-          </Stack>
+          {renderForm(form, handleChange, addFileRef, (e) =>
+            handleFilePick(e, 'add')
+          )}
         </DialogContent>
 
         <DialogActions sx={{ p: 2.5, pt: 0 }}>
-          <Button onClick={() => setOpen(false)} disabled={loading} variant="outlined">Cancel</Button>
-          <Button variant="contained" onClick={handleRegister} disabled={loading}>
-            {loading ? "Registering..." : "Register Wholesaler"}
+          <Button
+            onClick={() => setOpen(false)}
+            disabled={loading}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleCreate} disabled={loading}>
+            {loading ? 'Creating...' : 'Create Category'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* EDIT DIALOG */}
-      <Dialog open={openEdit} onClose={() => !loading && setOpenEdit(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={openEdit}
+        onClose={() => !loading && setOpenEdit(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>
-          <Typography variant="h5" fontWeight="bold">Edit Wholesaler</Typography>
-          <Typography variant="body2" color="textSecondary">Update wholesaler information</Typography>
+          <Typography variant="h5" fontWeight="bold">
+            Edit Category
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Update category information
+          </Typography>
         </DialogTitle>
 
         <DialogContent>
-          <Stack spacing={3} mt={1}>
-            <TextField
-              label="Store Name"
-              name="storeName"
-              value={editForm.storeName}
-              onChange={handleEditChange}
-              fullWidth
-              required
-            />
-
-            <TextField
-              label="Email Address"
-              name="email"
-              type="email"
-              value={editForm.email}
-              onChange={handleEditChange}
-              fullWidth
-              required
-            />
-
-            <TextField
-              label="Phone Number"
-              name="phoneNumber"
-              value={editForm.phoneNumber}
-              onChange={handleEditChange}
-              fullWidth
-              required
-              inputProps={{ maxLength: 10 }}
-            />
-
-            <TextField
-              label="PIN"
-              name="pin"
-              type={showPin ? "text" : "password"}
-              value={editForm.pin}
-              onChange={handleEditChange}
-              fullWidth
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={handleTogglePinVisibility} edge="end">
-                      {showPin ? "👁️" : "🔒"}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-              helperText="Leave as is to keep current PIN, or enter new PIN (min 4 characters)"
-            />
-
-            <TextField
-              label="City"
-              name="city"
-              value={editForm.city}
-              onChange={handleEditChange}
-              fullWidth
-              required
-            />
-
-            <TextField
-              label="Pincode"
-              name="pincode"
-              value={editForm.pincode}
-              onChange={handleEditChange}
-              fullWidth
-              required
-              inputProps={{ maxLength: 6 }}
-            />
-
-            <TextField
-              label="State"
-              name="state"
-              value={editForm.state}
-              onChange={handleEditChange}
-              fullWidth
-              required
-            />
-
-            <TextField
-              label="Full Address"
-              name="address"
-              value={editForm.address}
-              onChange={handleEditChange}
-              fullWidth
-              required
-              multiline
-              rows={3}
-            />
-          </Stack>
+          {renderForm(
+            editForm,
+            handleEditChange,
+            editFileRef,
+            (e) => handleFilePick(e, 'edit'),
+            true
+          )}
         </DialogContent>
 
         <DialogActions sx={{ p: 2.5, pt: 0 }}>
-          <Button onClick={() => setOpenEdit(false)} disabled={loading} variant="outlined">Cancel</Button>
-          <Button variant="contained" onClick={handleUpdate} disabled={loading} color="primary">
-            {loading ? "Updating..." : "Update Wholesaler"}
+          <Button
+            onClick={() => setOpenEdit(false)}
+            disabled={loading}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleUpdate}
+            disabled={loading}
+            color="primary"
+          >
+            {loading ? 'Updating...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -774,13 +728,13 @@ export default function WholesalerRegistration() {
         open={snackbar.open}
         autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          severity={snackbar.severity} 
+        <Alert
+          severity={snackbar.severity}
           onClose={() => setSnackbar({ ...snackbar, open: false })}
           variant="filled"
-          sx={{ width: "100%" }}
+          sx={{ width: '100%' }}
         >
           {snackbar.message}
         </Alert>

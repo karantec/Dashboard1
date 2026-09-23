@@ -19,13 +19,13 @@ const navConfig = [
   },
 
   {
-    title: 'WholeSaler',
+    title: 'Category Of products',
     path: '/wholeSale',
     icon: icon('ic_user'),
   },
   {
-    title: 'Generate WholesalerCoupan',
-    path: '/Generatewholesalecoupan',
+    title: 'TicketManager',
+    path: '/TicketManager',
     icon: icon('ic_user'),
   },
   {
@@ -34,11 +34,11 @@ const navConfig = [
     icon: icon('ic_user'),
   },
   
-   {
-    title: 'Category Of products',
-    path: '/category',
-    icon: icon('ic_user'),
-  },
+  //  {
+  //   title: 'Category Of products',
+  //   path: '/category',
+  //   icon: icon('ic_user'),
+  // },
   {
     title: 'SubCategory Of products',
     path: '/subcategory',

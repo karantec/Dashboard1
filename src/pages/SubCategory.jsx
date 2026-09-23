@@ -1,540 +1,979 @@
-/* eslint-disable react/prop-types */
-/* eslint-disable perfectionist/sort-named-imports */
+// src/pages/SliderManagement.jsx
 /* eslint-disable */
-
-import axios from "axios";
-import * as XLSX from "xlsx";
-import { Field, Formik, Form } from "formik";
-import React, { useState, useEffect } from "react";
-import { MdEdit, MdDelete, MdClear } from "react-icons/md";
-
+import { useState, useEffect, useRef } from 'react';
 import {
-  Box,
-  Button,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
+  Container,
+  Stack,
   Typography,
-  MenuItem,
-  Select,
-  InputLabel,
-  FormControl,
-  Alert,
+  Button,
+  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogContentText,
   DialogActions,
-} from "@mui/material";
-import CSVUploaderSub from "./SubCategoryCSv";
-import {
-  getCategories,
-} from "src/services/categoryService";
-import {
-  getSubCategories,
-  createSubcategory,
-  updateSubcategory,
-  deleteSubcategory,
-} from "src/services/SubcategoryService";
+  Grid,
+  Card,
+  CardContent,
+  CardMedia,
+  Chip,
+  Snackbar,
+  Alert,
+  Box,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  FormHelperText,
+  Switch,
+  FormControlLabel,
+} from '@mui/material';
 
-// Cloudinary config
-const CLOUDINARY_UPLOAD_PRESET = "market_data";
-const CLOUDINARY_CLOUD_NAME = "drq4o4qix";
+// ✅ API BASE URL — matches your routes: app.use("/api/slider", ...)
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api') + '/slider';
 
-export default function SubCategory() {
-  const [subcategories, setSubcategories] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [editingSub, setEditingSub] = useState(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [subToDelete, setSubToDelete] = useState(null);
+// 🔥 Slider API
+const sliderApi = {
+  // GET /api/slider — public
+  getAll: async () => {
+    const res = await fetch(`${API_BASE_URL}/`);
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    const data = await res.json();
+    // Server returns: { id, slides: [...], is_active, updated_at }
+    // Or { success, data: {...} }
+    return data.success ? data.data : data;
+  },
 
-  // Fetch categories
-  const fetchCategories = async () => {
-    try {
-      const data = await getCategories();
-      console.log("Categories data:", data);
-      setCategories(data.categories || []);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-      setSnackbar({ open: true, message: "Error fetching categories", severity: "error" });
+  // PATCH /api/slider/toggle
+  toggle: async () => {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch(`${API_BASE_URL}/toggle`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
     }
-  };
+    return res.json();
+  },
 
-  // Fetch subcategories
-  const fetchSubcategories = async () => {
+  // POST /api/slider/slides — multipart (file + fields)
+  addSlide: async (formData) => {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch(`${API_BASE_URL}/slides`, {
+      method: 'POST',
+      headers: {
+        // ⚠️ Do NOT set Content-Type — browser sets multipart boundary
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  // PUT /api/slider/slides/:slideId — multipart
+  updateSlide: async (slideId, formData) => {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch(`${API_BASE_URL}/slides/${slideId}`, {
+      method: 'PUT',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  // DELETE /api/slider/slides/:slideId
+  deleteSlide: async (slideId) => {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch(`${API_BASE_URL}/slides/${slideId}`, {
+      method: 'DELETE',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP error! status: ${res.status}`);
+    }
+    return res.json();
+  },
+};
+
+// Form defaults
+const defaultForm = {
+  title: '',
+  media_type: 'image',
+  media_url: '',
+  auto_duration: 5000,
+  sort_order: 0,
+  number: '',
+  media_file: null,
+  previewUrl: '',
+};
+
+export default function SliderManagement() {
+  const [slider, setSlider] = useState(null);
+  const [slides, setSlides] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
+  const [form, setForm] = useState(defaultForm);
+  const [editForm, setEditForm] = useState(defaultForm);
+  const [editingId, setEditingId] = useState(null);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+  const [loading, setLoading] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+
+  const addFileRef = useRef(null);
+  const editFileRef = useRef(null);
+
+  useEffect(() => {
+    const adminToken = localStorage.getItem('adminToken');
+    if (adminToken) setIsAdminAuthenticated(true);
+    fetchSlider();
+  }, []);
+
+  // ─── Fetch ──────────────────────────────────────────────
+  const fetchSlider = async () => {
     setLoading(true);
     try {
-      const data = await getSubCategories();
-      console.log("All subcategories data:", data);
-      console.log("Total subcategories count:", data.subcategories?.length || 0);
-      setSubcategories(data.subcategories || []);
-    } catch (error) {
-      console.error("Error fetching subcategories:", error);
-      setSnackbar({ open: true, message: "Error fetching subcategories", severity: "error" });
+      const row = await sliderApi.getAll();
+      let list = row?.slides ?? [];
+      if (typeof list === 'string') {
+        try {
+          list = JSON.parse(list);
+        } catch {
+          list = [];
+        }
+      }
+      setSlider(row || null);
+      setSlides(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error('Fetch error:', err);
+      showSnackbar(err.message || 'Failed to fetch slider', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchCategories();
-    fetchSubcategories();
-  }, []);
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
 
-  // Upload image to Cloudinary
-  const uploadImageToCloudinary = async (file) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-
+  // ─── Toggle active ──────────────────────────────────────
+  const handleToggleActive = async () => {
+    if (!isAdminAuthenticated) {
+      return showSnackbar('Admin not authenticated.', 'error');
+    }
+    setToggling(true);
     try {
-      const response = await axios.post(
-        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-      return response.data.secure_url;
-    } catch (error) {
-      console.error("Cloudinary upload error:", error);
-      throw new Error("Failed to upload image to Cloudinary");
+      const res = await sliderApi.toggle();
+      const row = res?.data || res || {};
+      const next =
+        typeof row.is_active === 'boolean' ? row.is_active : !slider?.is_active;
+
+      setSlider((s) => ({ ...(s || {}), is_active: next }));
+      showSnackbar(`Slider ${next ? 'activated' : 'deactivated'}`);
+    } catch (err) {
+      showSnackbar(err.message || 'Failed to toggle', 'error');
+    } finally {
+      setToggling(false);
     }
   };
 
-  const handleImageUpload = async (event, setFieldValue) => {
-    const file = event.target.files[0];
+  // ─── Form Change ────────────────────────────────────────
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleEditChange = (e) => {
+    setEditForm({ ...editForm, [e.target.name]: e.target.value });
+  };
+
+  // ─── File Picker ────────────────────────────────────────
+  const handleFilePick = (e, mode) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setSnackbar({ open: true, message: "Invalid file type. Please upload an image.", severity: "error" });
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+
+    if (!isImage && !isVideo) {
+      showSnackbar('Only image or video files are allowed.', 'error');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setSnackbar({ open: true, message: "File too large. Maximum size is 5MB.", severity: "error" });
+    // 25 MB cap for videos, 5 MB for images
+    const maxSize = isVideo ? 25 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      showSnackbar(
+        `File too large. Max ${isVideo ? '25 MB for videos' : '5 MB for images'}.`,
+        'error'
+      );
       return;
     }
 
-    setUploading(true);
-    try {
-      const imageUrl = await uploadImageToCloudinary(file);
-      setFieldValue("image", imageUrl);
-      setSnackbar({ open: true, message: "Image uploaded successfully", severity: "success" });
-    } catch (error) {
-      setSnackbar({ open: true, message: error.message || "Failed to upload image", severity: "error" });
-    } finally {
-      setUploading(false);
+    const previewUrl = URL.createObjectURL(file);
+
+    if (mode === 'add') {
+      setForm((prev) => ({
+        ...prev,
+        media_file: file,
+        previewUrl,
+        media_type: isVideo ? 'video' : 'image',
+      }));
+    } else {
+      setEditForm((prev) => ({
+        ...prev,
+        media_file: file,
+        previewUrl,
+        media_type: isVideo ? 'video' : 'image',
+      }));
     }
   };
 
-  // Submit (Add/Update)
-  const handleSubmit = async (values, { resetForm }) => {
-    // Validate required fields
-    if (!values.name || !values.category) {
-      setSnackbar({ open: true, message: "Name and category are required", severity: "error" });
-      return;
+  const resetForm = () => {
+    setForm(defaultForm);
+    if (addFileRef.current) addFileRef.current.value = '';
+  };
+
+  const resetEditForm = () => {
+    setEditForm(defaultForm);
+    if (editFileRef.current) editFileRef.current.value = '';
+  };
+
+  // ─── Build FormData ─────────────────────────────────────
+  // Sent as multipart/form-data. Backend uploads `media_file` (if present)
+  // to storage and stores the resulting URL as `media_url` inside the JSONB.
+  const buildFormData = (data) => {
+    const fd = new FormData();
+    fd.append('title', (data.title || '').trim());
+    fd.append('media_type', data.media_type || 'image');
+    fd.append(
+      'auto_duration',
+      data.media_type === 'video' ? '' : String(data.auto_duration || 5000)
+    );
+    fd.append('sort_order', String(data.sort_order || 0));
+    fd.append('number', data.number || '');
+
+    // Only include media_url if user hasn't picked a new file.
+    // When a file IS present, backend replaces media_url with the new upload.
+    if (!data.media_file && data.media_url) {
+      fd.append('media_url', data.media_url);
+    }
+    if (data.media_file) {
+      fd.append('media_file', data.media_file);
+    }
+    return fd;
+  };
+
+  // ─── CREATE ─────────────────────────────────────────────
+  const handleCreate = async () => {
+    if (!form.title.trim()) {
+      return showSnackbar('Slide title is required', 'error');
+    }
+    if (!form.media_file && !form.media_url) {
+      return showSnackbar('Please upload a media file', 'error');
     }
 
-    try {
-      const submitData = {
-        name: values.name,
-        category: values.category,
-        image: values.image || "",
-        section: values.section || "",
-      };
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      return showSnackbar('Admin not authenticated. Please login again.', 'error');
+    }
 
-      if (editingSub) {
-        await updateSubcategory(editingSub._id, submitData);
-        setSnackbar({ open: true, message: "Subcategory updated successfully", severity: "success" });
+    setLoading(true);
+    try {
+      const fd = buildFormData(form);
+      const res = await sliderApi.addSlide(fd);
+
+      if (res.success || res.data || res.id) {
+        showSnackbar('Slide added successfully!');
+        setOpen(false);
+        resetForm();
+        fetchSlider();
       } else {
-        await createSubcategory(submitData);
-        setSnackbar({ open: true, message: "Subcategory added successfully", severity: "success" });
+        showSnackbar(res.message || 'Error adding slide', 'error');
       }
-      resetForm();
-      setEditingSub(null);
-      fetchSubcategories();
-    } catch (error) {
-      console.error("Error saving subcategory:", error);
-      setSnackbar({ 
-        open: true, 
-        message: error.response?.data?.message || error.message || "Error saving subcategory", 
-        severity: "error" 
-      });
-    }
-  };
-
-  // Delete - with confirmation dialog
-  const handleDeleteClick = (id) => {
-    setSubToDelete(id);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!subToDelete) return;
-    
-    try {
-      await deleteSubcategory(subToDelete);
-      setSnackbar({ open: true, message: "Subcategory deleted successfully", severity: "success" });
-      fetchSubcategories();
-    } catch (error) {
-      console.error("Error deleting subcategory:", error);
-      setSnackbar({ 
-        open: true, 
-        message: error.response?.data?.message || error.message || "Error deleting subcategory", 
-        severity: "error" 
-      });
+    } catch (err) {
+      console.error('Create error:', err);
+      showSnackbar(err.message || 'Server error. Please try again.', 'error');
     } finally {
-      setDeleteDialogOpen(false);
-      setSubToDelete(null);
+      setLoading(false);
     }
   };
 
-  const handleCancelDelete = () => {
-    setDeleteDialogOpen(false);
-    setSubToDelete(null);
+  // ─── UPDATE ─────────────────────────────────────────────
+  const handleUpdate = async () => {
+    if (!editForm.title.trim()) {
+      return showSnackbar('Slide title is required', 'error');
+    }
+
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      return showSnackbar('Admin not authenticated. Please login again.', 'error');
+    }
+
+    setLoading(true);
+    try {
+      const fd = buildFormData(editForm);
+      const res = await sliderApi.updateSlide(editingId, fd);
+
+      if (res.success || res.data || res.id) {
+        showSnackbar('Slide updated successfully!');
+        setOpenEdit(false);
+        resetEditForm();
+        setEditingId(null);
+        fetchSlider();
+      } else {
+        showSnackbar(res.message || 'Error updating slide', 'error');
+      }
+    } catch (err) {
+      console.error('Update error:', err);
+      showSnackbar(err.message || 'Server error. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Filter subcategories based on search query
-  const filteredSubs = subcategories.filter(
-    (sub) =>
-      sub.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sub.category?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+  // ─── DELETE ─────────────────────────────────────────────
+  const handleDelete = async (slideId, title) => {
+    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
+
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      return showSnackbar('Admin not authenticated. Please login again.', 'error');
+    }
+
+    setLoading(true);
+    try {
+      const res = await sliderApi.deleteSlide(slideId);
+      if (res.success || res.id || res.data) {
+        showSnackbar('Slide deleted successfully!');
+        fetchSlider();
+      } else {
+        showSnackbar(res.message || 'Error deleting slide', 'error');
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      showSnackbar(err.message || 'Server error. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Open Edit ──────────────────────────────────────────
+  const openEditDialog = (slide) => {
+    setEditingId(slide.id);
+    setEditForm({
+      title: slide.title || '',
+      media_type: slide.media_type || 'image',
+      media_url: slide.media_url || '',
+      auto_duration: slide.auto_duration ?? 5000,
+      sort_order: slide.sort_order ?? 0,
+      number: slide.number || '',
+      media_file: null, // user must pick a new file to replace
+      previewUrl: slide.media_url || '', // shows existing media
+    });
+    setOpenEdit(true);
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('adminToken');
+    setIsAdminAuthenticated(false);
+    showSnackbar('Admin logged out successfully', 'info');
+  };
+
+  // ─── Reusable Form Renderer ─────────────────────────────
+  const renderForm = (data, onChange, fileRef, onFileChange, isEdit = false) => (
+    <Stack spacing={3} mt={1}>
+      <TextField
+        label="Slide Title"
+        name="title"
+        value={data.title}
+        onChange={onChange}
+        fullWidth
+        required
+        autoFocus
+        placeholder="e.g., FUTURE-READY FASHION"
+        helperText="Headline shown on the slide"
+      />
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6}>
+          <FormControl fullWidth>
+            <InputLabel>Media Type</InputLabel>
+            <Select
+              name="media_type"
+              value={data.media_type}
+              onChange={onChange}
+              label="Media Type"
+            >
+              <MenuItem value="image">Image</MenuItem>
+              <MenuItem value="video">Video</MenuItem>
+            </Select>
+            <FormHelperText>
+              Image slides auto-advance; videos play in full
+            </FormHelperText>
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Display Number (optional)"
+            name="number"
+            value={data.number}
+            onChange={onChange}
+            fullWidth
+            placeholder="01, 02, 03..."
+            helperText="Badge number shown on the slide"
+          />
+        </Grid>
+      </Grid>
+
+      <Grid container spacing={2}>
+        {data.media_type === 'image' && (
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="Auto Duration (ms)"
+              name="auto_duration"
+              type="number"
+              value={data.auto_duration}
+              onChange={onChange}
+              fullWidth
+              helperText="e.g. 5000 = 5 seconds"
+              inputProps={{ min: 500, step: 500 }}
+            />
+          </Grid>
+        )}
+
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Sort Order"
+            name="sort_order"
+            type="number"
+            value={data.sort_order}
+            onChange={onChange}
+            fullWidth
+            helperText="Lower numbers appear first"
+            inputProps={{ min: 0 }}
+          />
+        </Grid>
+      </Grid>
+
+      {/* Media upload */}
+      <Box>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ mb: 1, display: 'block', fontWeight: 600 }}
+        >
+          Slide Media {isEdit && '(leave empty to keep current)'}
+        </Typography>
+
+        <Stack direction="row" spacing={2} alignItems="center">
+          {/* Preview */}
+          <Box
+            sx={{
+              width: 140,
+              height: 100,
+              borderRadius: 2,
+              border: '2px dashed #e0d9ce',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              bgcolor: '#fafafa',
+              flexShrink: 0,
+            }}
+          >
+            {data.previewUrl ? (
+              data.media_type === 'video' ? (
+                <Box
+                  component="video"
+                  src={data.previewUrl}
+                  muted
+                  sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <Box
+                  component="img"
+                  src={data.previewUrl}
+                  alt="preview"
+                  sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              )
+            ) : (
+              <Typography variant="caption" color="text.secondary">
+                No media
+              </Typography>
+            )}
+          </Box>
+
+          {/* Upload controls */}
+          <Stack spacing={1}>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,video/*"
+              hidden
+              onChange={onFileChange}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => fileRef.current?.click()}
+            >
+              {data.media_file ? 'Change Media' : 'Choose Media'}
+            </Button>
+            {data.media_file && (
+              <Button
+                variant="text"
+                size="small"
+                color="error"
+                onClick={() =>
+                  isEdit
+                    ? setEditForm((prev) => ({
+                        ...prev,
+                        media_file: null,
+                        previewUrl: prev.media_url || '',
+                      }))
+                    : setForm((prev) => ({
+                        ...prev,
+                        media_file: null,
+                        previewUrl: '',
+                      }))
+                }
+              >
+                Remove New File
+              </Button>
+            )}
+          </Stack>
+        </Stack>
+      </Box>
+    </Stack>
   );
 
-  // Red button styles
-  const redButtonStyle = {
-    bgcolor: '#dc2626',
-    color: 'white',
-    '&:hover': {
-      bgcolor: '#b91c1c',
-    },
-  };
-
-  const redOutlinedButtonStyle = {
-    color: '#dc2626',
-    borderColor: '#dc2626',
-    '&:hover': {
-      borderColor: '#b91c1c',
-      bgcolor: 'rgba(220, 38, 38, 0.04)',
-    },
-  };
+  // ─── Derived ────────────────────────────────────────────
+  const sortedSlides = [...slides].sort(
+    (a, b) => (a.sort_order || 0) - (b.sort_order || 0)
+  );
+  const imageCount = slides.filter((s) => s.media_type === 'image').length;
+  const videoCount = slides.filter((s) => s.media_type === 'video').length;
 
   return (
-    <Box sx={{ p: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Subcategory Management
+    <Container maxWidth="lg">
+      {/* Header */}
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={4}
+        flexWrap="wrap"
+        gap={2}
+      >
+        <Box>
+          <Typography variant="h4" gutterBottom fontWeight="bold">
+            Slider Management
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Manage your hero slideshow — images, videos, order and timing
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={2} alignItems="center">
+          {isAdminAuthenticated && (
+            <Chip
+              label="Admin Mode"
+              color="primary"
+              size="medium"
+              onDelete={handleAdminLogout}
+            />
+          )}
+          <Button
+            variant="contained"
+            onClick={() => {
+              resetForm();
+              setOpen(true);
+            }}
+            disabled={loading}
+            size="large"
+          >
+            + Add Slide
+          </Button>
+        </Stack>
+      </Stack>
+
+      {/* STATS CARDS */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={3}>
+          <Card sx={{ bgcolor: '#f5f5f5' }}>
+            <CardContent>
+              <Typography variant="h6" color="primary" fontWeight="bold">
+                Slider Status
+              </Typography>
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                mt={1}
+              >
+                <Chip
+                  label={slider?.is_active ? 'ACTIVE' : 'INACTIVE'}
+                  color={slider?.is_active ? 'success' : 'default'}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={!!slider?.is_active}
+                      onChange={handleToggleActive}
+                      disabled={toggling || !isAdminAuthenticated}
+                      color="error"
+                    />
+                  }
+                  label=""
+                />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#f0fdf4' }}>
+            <CardContent>
+              <Typography variant="h6" color="#16a34a" fontWeight="bold">
+                Total Slides
+              </Typography>
+              <Typography variant="h3" fontWeight="bold">
+                {slides.length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#fefce8' }}>
+            <CardContent>
+              <Typography variant="h6" color="#ca8a04" fontWeight="bold">
+                Image Slides
+              </Typography>
+              <Typography variant="h3" fontWeight="bold">
+                {imageCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#eff6ff' }}>
+            <CardContent>
+              <Typography variant="h6" color="#2563eb" fontWeight="bold">
+                Video Slides
+              </Typography>
+              <Typography variant="h3" fontWeight="bold">
+                {videoCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* LIST */}
+      <Typography variant="h5" gutterBottom mb={2} fontWeight="bold">
+        All Slides
       </Typography>
 
-      {/* CSV Upload */}
-      <Box sx={{ mb: 3 }}>
-        <CSVUploaderSub onUploadSuccess={fetchSubcategories} />
-        <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
-          <Typography variant="body2">
-            💡 You can upload multiple subcategories at once using a CSV file.  
-            Make sure your CSV includes columns: <b>name</b>, <b>category</b>, <b>image</b>, and <b>section</b> (optional).  
-            <br />
-            Example:  
-            <code>Electronics, Mobile Phones, https://example.com/image.jpg, Electronics</code>
-          </Typography>
-        </Alert>
-      </Box>
-
-      {/* Formik Form */}
-      <Formik
-        initialValues={{
-          name: editingSub?.name || "",
-          category: editingSub?.category?._id || "",
-          image: editingSub?.image || "",
-          section: editingSub?.section || "",
-        }}
-        enableReinitialize
-        onSubmit={handleSubmit}
-        validate={(values) => {
-          const errors = {};
-          if (!values.name) errors.name = "Name is required";
-          if (!values.category) errors.category = "Category is required";
-          return errors;
-        }}
-      >
-        {({ resetForm, setFieldValue, values, errors, touched, isSubmitting }) => (
-          <Form style={{ marginBottom: "2rem" }}>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mb: 2 }}>
-              <Field 
-                as={TextField} 
-                name="name" 
-                label="Subcategory Name" 
-                fullWidth 
-                required
-                error={touched.name && Boolean(errors.name)}
-                helperText={touched.name && errors.name}
-              />
-
-              <FormControl fullWidth required error={touched.category && Boolean(errors.category)}>
-                <InputLabel>Category</InputLabel>
-                <Field as={Select} name="category" label="Category">
-                  <MenuItem value="">
-                    <em>Select a category</em>
-                  </MenuItem>
-                  {categories.map((cat) => (
-                    <MenuItem key={cat._id} value={cat._id}>
-                      {cat.name}
-                    </MenuItem>
-                  ))}
-                </Field>
-                {touched.category && errors.category && (
-                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 2 }}>
-                    {errors.category}
-                  </Typography>
-                )}
-              </FormControl>
-
-              <Field 
-                as={TextField} 
-                name="section" 
-                label="Section (optional)" 
-                fullWidth 
-                helperText="e.g., Electronics, Fashion, Grocery"
-              />
-
-              <Field 
-                as={TextField} 
-                name="image" 
-                label="Image URL" 
-                fullWidth 
-                helperText="Enter image URL or upload below"
-              />
-              
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <Button 
-                  component="label" 
-                  variant="outlined" 
-                  disabled={uploading}
-                  sx={redOutlinedButtonStyle}
-                >
-                  {uploading ? "Uploading..." : "Upload Image"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => handleImageUpload(e, setFieldValue)}
-                  />
-                </Button>
-                {uploading && <CircularProgress size={24} />}
-              </Box>
-
-              {values.image && (
-                <Box sx={{ mt: 2 }}>
-                  <img
-                    src={values.image}
-                    alt="Preview"
-                    style={{ 
-                      width: "100px", 
-                      height: "100px", 
-                      objectFit: "cover",
-                      borderRadius: "8px",
-                      border: "1px solid #e0e0e0"
-                    }}
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "https://via.placeholder.com/100?text=Invalid+URL";
-                    }}
-                  />
-                </Box>
-              )}
-
-              <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-                <Button 
-                  type="submit" 
-                  variant="contained" 
-                  disabled={uploading || isSubmitting}
-                  sx={redButtonStyle}
-                >
-                  {isSubmitting ? (
-                    <CircularProgress size={24} color="inherit" />
-                  ) : editingSub ? (
-                    "Update Subcategory"
-                  ) : (
-                    "Add Subcategory"
-                  )}
-                </Button>
-                {editingSub && (
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      setEditingSub(null);
-                      resetForm();
-                    }}
-                    startIcon={<MdClear />}
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </Box>
-            </Box>
-          </Form>
-        )}
-      </Formik>
-
-      {/* Search */}
-      <Box sx={{ mb: 2, display: "flex", gap: 2, alignItems: "center" }}>
-        <TextField
-          label="Search Subcategories"
-          variant="outlined"
-          fullWidth
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by name or category..."
-        />
-        <Typography variant="body2" color="textSecondary">
-          Total: {filteredSubs.length} subcategories
+      {loading && !slides.length ? (
+        <Typography textAlign="center" py={4}>
+          Loading slides...
         </Typography>
-      </Box>
-
-      {/* Table - Showing All Subcategories */}
-      {loading ? (
-        <Box display="flex" justifyContent="center" p={3}>
-          <CircularProgress />
-        </Box>
       ) : (
-        <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
-          <Table>
-            <TableHead sx={{ bgcolor: '#f5f5f5' }}>
-              <TableRow>
-                <TableCell><b>Name</b></TableCell>
-                <TableCell><b>Category</b></TableCell>
-                <TableCell><b>Section</b></TableCell>
-                <TableCell><b>Image</b></TableCell>
-                <TableCell><b>Actions</b></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredSubs.length > 0 ? (
-                filteredSubs.map((sub) => (
-                  <TableRow key={sub._id} hover>
-                    <TableCell>{sub.name}</TableCell>
-                    <TableCell>{sub.category?.name || "N/A"}</TableCell>
-                    <TableCell>{sub.section || "—"}</TableCell>
-                    <TableCell>
-                      {sub.image ? (
-                        <img
-                          src={sub.image}
-                          alt={sub.name}
-                          width="80"
-                          height="80"
-                          style={{ 
-                            objectFit: "cover", 
-                            borderRadius: "4px",
-                            border: "1px solid #e0e0e0"
-                          }}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = "https://via.placeholder.com/80?text=No+Image";
-                          }}
-                        />
-                      ) : (
-                        <Box 
-                          sx={{ 
-                            width: 80, 
-                            height: 80, 
-                            bgcolor: '#f5f5f5', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            borderRadius: 1
-                          }}
-                        >
-                          <Typography variant="caption" color="textSecondary">
-                            No Image
-                          </Typography>
-                        </Box>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <IconButton 
-                        color="primary" 
-                        onClick={() => {
-                          setEditingSub(sub);
+        <Grid container spacing={3}>
+          {sortedSlides.length === 0 ? (
+            <Grid item xs={12}>
+              <Card sx={{ bgcolor: '#fafafa', textAlign: 'center', py: 4 }}>
+                <Typography color="textSecondary">
+                  No slides yet. Add your first one!
+                </Typography>
+              </Card>
+            </Grid>
+          ) : (
+            sortedSlides.map((slide, index) => (
+              <Grid item xs={12} sm={6} md={4} key={slide.id ?? index}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    transition: '0.3s',
+                    '&:hover': { boxShadow: 6 },
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {/* Media / fallback */}
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      pt: '60%',
+                      bgcolor: '#1a1f2e',
+                    }}
+                  >
+                    {slide.media_type === 'image' && slide.media_url ? (
+                      <CardMedia
+                        component="img"
+                        image={slide.media_url}
+                        alt={slide.title}
+                        sx={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
                         }}
-                        title="Edit"
+                      />
+                    ) : slide.media_type === 'video' && slide.media_url ? (
+                      <Box
+                        component="video"
+                        src={slide.media_url}
+                        muted
+                        sx={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 42,
+                          color: '#c8a96e',
+                        }}
                       >
-                        <MdEdit />
-                      </IconButton>
-                      <IconButton 
-                        color="error" 
-                        onClick={() => handleDeleteClick(sub._id)}
-                        title="Delete"
+                        🎬
+                      </Box>
+                    )}
+
+                    {/* Number badge */}
+                    <Chip
+                      label={slide.number || '--'}
+                      size="small"
+                      sx={{
+                        position: 'absolute',
+                        top: 8,
+                        left: 8,
+                        bgcolor: 'rgba(26,31,46,0.85)',
+                        color: '#c8a96e',
+                        fontWeight: 700,
+                      }}
+                    />
+
+                    {/* Type badge */}
+                    <Chip
+                      label={slide.media_type}
+                      size="small"
+                      color={slide.media_type === 'video' ? 'info' : 'success'}
+                      sx={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        textTransform: 'uppercase',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </Box>
+
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="flex-start"
+                      mb={2}
+                    >
+                      <Typography
+                        variant="h6"
+                        fontWeight="bold"
+                        gutterBottom
+                        noWrap
+                        title={slide.title}
+                        sx={{ maxWidth: '65%' }}
                       >
-                        <MdDelete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} align="center">
-                    <Typography variant="body1" color="textSecondary" sx={{ py: 3 }}>
-                      {searchQuery 
-                        ? "No subcategories found matching your search" 
-                        : "No subcategories available. Add one to get started!"}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                        {slide.title}
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={() => openEditDialog(slide)}
+                          sx={{ minWidth: '35px', p: '4px 8px' }}
+                          disabled={!isAdminAuthenticated}
+                        >
+                          ✏️
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => handleDelete(slide.id, slide.title)}
+                          sx={{ minWidth: '35px', p: '4px 8px' }}
+                          disabled={!isAdminAuthenticated}
+                        >
+                          🗑️
+                        </Button>
+                      </Stack>
+                    </Stack>
+
+                    <Stack spacing={1}>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary">
+                          Sort Order
+                        </Typography>
+                        <Typography variant="body2">
+                          {slide.sort_order ?? 0}
+                        </Typography>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="caption" color="textSecondary">
+                          Duration
+                        </Typography>
+                        <Typography variant="body2">
+                          {slide.auto_duration
+                            ? `${slide.auto_duration} ms`
+                            : 'Full video'}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))
+          )}
+        </Grid>
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* CREATE DIALOG */}
       <Dialog
-        open={deleteDialogOpen}
-        onClose={handleCancelDelete}
+        open={open}
+        onClose={() => !loading && setOpen(false)}
+        fullWidth
+        maxWidth="sm"
       >
-        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h5" fontWeight="bold">
+            Add Slide
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Add a new slide to the hero slider
+          </Typography>
+        </DialogTitle>
+
         <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete this subcategory? This action cannot be undone.
-            {subToDelete && <br />}
-            {subToDelete && <strong>Note: This will also affect products associated with this subcategory.</strong>}
-          </DialogContentText>
+          {renderForm(form, handleChange, addFileRef, (e) =>
+            handleFilePick(e, 'add')
+          )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCancelDelete} color="primary">
+
+        <DialogActions sx={{ p: 2.5, pt: 0 }}>
+          <Button
+            onClick={() => setOpen(false)}
+            disabled={loading}
+            variant="outlined"
+          >
             Cancel
           </Button>
-          <Button onClick={handleConfirmDelete} color="error" variant="contained">
-            Delete
+          <Button variant="contained" onClick={handleCreate} disabled={loading}>
+            {loading ? 'Adding...' : 'Add Slide'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
+      {/* EDIT DIALOG */}
+      <Dialog
+        open={openEdit}
+        onClose={() => !loading && setOpenEdit(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          <Typography variant="h5" fontWeight="bold">
+            Edit Slide
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Update slide information
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent>
+          {renderForm(
+            editForm,
+            handleEditChange,
+            editFileRef,
+            (e) => handleFilePick(e, 'edit'),
+            true
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2.5, pt: 0 }}>
+          <Button
+            onClick={() => setOpenEdit(false)}
+            disabled={loading}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleUpdate}
+            disabled={loading}
+            color="primary"
+          >
+            {loading ? 'Updating...' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* SNACKBAR */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+        <Alert
           severity={snackbar.severity}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
           variant="filled"
           sx={{ width: '100%' }}
         >
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </Container>
   );
 }

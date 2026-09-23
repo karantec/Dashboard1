@@ -1,3 +1,4 @@
+// src/components/TickerBarManager.jsx
 /* eslint-disable perfectionist/sort-named-imports */
 /* eslint-disable react/prop-types */
 /* eslint-disable */
@@ -13,14 +14,11 @@ import {
   Typography,
   Chip,
   TextField,
-  MenuItem,
   Alert,
   Paper,
   Divider,
-  FormControl,
-  InputLabel,
-  Select,
-  FormHelperText,
+  FormControlLabel,
+  Switch,
   IconButton,
   Dialog,
   DialogTitle,
@@ -32,17 +30,13 @@ import {
 } from "@mui/material";
 
 import {
-  getAllWholesalers,
-  getAllCoupons,
-  applyCouponToWholesaler,
-  getWholesalerCoupons,
-  revokeCouponFromWholesaler,
-  getCouponStatistics,
-  formatCouponDiscount,
-  isCouponExpired,
-  getCouponStatusInfo,
-  bulkApplyCoupon,
-} from "../services/WholeSaleService";
+  getTickerBar,
+  updateTickerBar,
+  toggleActive,
+  addItem,
+  updateItem,
+  deleteItem,
+} from "../services/TickerBarService";
 
 const primaryButtonStyle = {
   bgcolor: "#dc2626",
@@ -64,43 +58,67 @@ const secondaryButtonStyle = {
   },
 };
 
-export default function WholesaleCouponManager() {
-  const [wholesalers, setWholesalers] = useState([]);
-  const [coupons, setCoupons] = useState([]);
+const EMPTY_FORM = { text: "", link: "", order: 0, isActive: true };
+
+/** Unwraps { success, data } envelopes OR returns the raw body */
+const unwrap = (body) =>
+  body && typeof body === "object" && "data" in body ? body.data : body;
+
+const sortByOrder = (list) =>
+  [...list].sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
+
+export default function TickerBarManager() {
+  const [items, setItems] = useState([]);
+  const [isActive, setIsActive] = useState(false);
+
   const [loading, setLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [selectedWholesaler, setSelectedWholesaler] = useState("");
-  const [selectedCoupon, setSelectedCoupon] = useState("");
-  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
-  const [applicationHistory, setApplicationHistory] = useState([]);
-  const [statistics, setStatistics] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
   const [activeTab, setActiveTab] = useState(0);
-  const [bulkWholesalers, setBulkWholesalers] = useState([]);
-  const [bulkCoupon, setBulkCoupon] = useState("");
-  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false);
-  const [selectedApplication, setSelectedApplication] = useState(null);
-  const [revokeReason, setRevokeReason] = useState("");
+  const [orderDirty, setOrderDirty] = useState(false);
+
+  // Item form (single apply tab)
+  const [editingItem, setEditingItem] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  // Delete dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   useEffect(() => {
     fetchInitialData();
-    fetchStatistics();
   }, []);
 
+  const toast = (message, severity = "success") =>
+    setSnackbar({ open: true, message, severity });
+
+  // ─────────────────────────────────────────────
+  // Data fetching
+  // ─────────────────────────────────────────────
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [wholesalersRes, couponsRes] = await Promise.all([
-        getAllWholesalers(),
-        getAllCoupons(),
-      ]);
-      
-      setWholesalers(wholesalersRes.wholesalers || wholesalersRes.data || []);
-      setCoupons(couponsRes.data || couponsRes || []);
+      const body = await getTickerBar();
+      const data = unwrap(body) || {};
+      const list = Array.isArray(data.items) ? sortByOrder(data.items) : [];
+
+      setItems(list);
+      setIsActive(Boolean(data.isActive));
+      setOrderDirty(false);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error("Error fetching ticker bar:", error);
+      setItems([]);
+      setIsActive(false);
       setSnackbar({
         open: true,
-        message: error.response?.data?.message || "Error fetching data",
+        message:
+          error.response?.data?.message || "Error fetching ticker bar data",
         severity: "error",
       });
     } finally {
@@ -108,172 +126,202 @@ export default function WholesaleCouponManager() {
     }
   };
 
-  const fetchStatistics = async () => {
-    try {
-      const stats = await getCouponStatistics();
-      setStatistics(stats.data || stats);
-    } catch (error) {
-      console.error("Error fetching statistics:", error);
-    }
+  // ─────────────────────────────────────────────
+  // Form handlers (Tab 0)
+  // ─────────────────────────────────────────────
+  const handleFormChange = (field, value) =>
+    setForm((f) => ({ ...f, [field]: value }));
+
+  const resetForm = () => {
+    setEditingItem(null);
+    setForm(EMPTY_FORM);
   };
 
-  const fetchWholesalerHistory = async (wholesalerId) => {
-    if (!wholesalerId) return;
-    try {
-      const history = await getWholesalerCoupons(wholesalerId);
-      setApplicationHistory(history.data || []);
-    } catch (error) {
-      console.error("Error fetching history:", error);
-      setApplicationHistory([]);
-    }
+  const handleEditClick = (item) => {
+    setEditingItem(item);
+    setForm({
+      text: item.text ?? item.message ?? "",
+      link: item.link ?? "",
+      order: item.order ?? 0,
+      isActive: item.isActive !== false,
+    });
+    setActiveTab(0);
   };
 
-  const handleWholesalerChange = (event) => {
-    const wholesalerId = event.target.value;
-    setSelectedWholesaler(wholesalerId);
-    if (wholesalerId) {
-      fetchWholesalerHistory(wholesalerId);
-    } else {
-      setApplicationHistory([]);
-    }
-  };
-
-  const handleApplyCoupon = async () => {
-    if (!selectedWholesaler) {
-      setSnackbar({
-        open: true,
-        message: "Please select a wholesaler",
-        severity: "error",
-      });
+  const handleSubmitItem = async () => {
+    if (!form.text.trim()) {
+      toast("Ticker text is required", "error");
       return;
     }
 
-    if (!selectedCoupon) {
-      setSnackbar({
-        open: true,
-        message: "Please select a coupon",
-        severity: "error",
-      });
-      return;
-    }
+    const payload = {
+      text: form.text.trim(),
+      link: form.link.trim(),
+      order: Number(form.order) || 0,
+      isActive: Boolean(form.isActive),
+    };
 
-    const wholesaler = wholesalers.find(w => w._id === selectedWholesaler);
-    const coupon = coupons.find(c => c._id === selectedCoupon);
-
-    setApplying(true);
+    setSaving(true);
     try {
-      await applyCouponToWholesaler(selectedWholesaler, coupon.code);
-      
-      setSnackbar({
-        open: true,
-        message: `Coupon ${coupon.code} applied to ${wholesaler?.storeName} successfully!`,
-        severity: "success",
-      });
-      
-      await fetchWholesalerHistory(selectedWholesaler);
-      await fetchStatistics();
-      
-      setSelectedWholesaler("");
-      setSelectedCoupon("");
-      
+      if (editingItem) {
+        const body = await updateItem(editingItem._id, payload);
+        const updated = unwrap(body);
+
+        setItems((prev) =>
+          sortByOrder(
+            prev.map((i) =>
+              i._id === editingItem._id
+                ? updated && updated._id
+                  ? updated
+                  : { ...i, ...payload }
+                : i
+            )
+          )
+        );
+
+        toast("Ticker item updated successfully!", "success");
+      } else {
+        const body = await addItem(payload);
+        const created = unwrap(body);
+
+        setItems((prev) =>
+          sortByOrder([
+            ...prev,
+            created && created._id
+              ? created
+              : { ...payload, _id: `temp-${Date.now()}` },
+          ])
+        );
+
+        toast("Ticker item added successfully!", "success");
+      }
+
+      resetForm();
     } catch (error) {
-      console.error("Error applying coupon:", error);
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.message || "Failed to apply coupon",
-        severity: "error",
-      });
+      console.error("Error saving ticker item:", error);
+      toast(
+        error.response?.data?.message || "Failed to save ticker item",
+        "error"
+      );
     } finally {
-      setApplying(false);
+      setSaving(false);
     }
   };
 
-  const handleRevokeCoupon = async () => {
-    if (!selectedApplication) return;
-
-    try {
-      await revokeCouponFromWholesaler(selectedApplication._id, revokeReason);
-      
-      setSnackbar({
-        open: true,
-        message: "Coupon revoked successfully",
-        severity: "success",
-      });
-      
-      await fetchWholesalerHistory(selectedWholesaler);
-      await fetchStatistics();
-      
-      setRevokeDialogOpen(false);
-      setSelectedApplication(null);
-      setRevokeReason("");
-    } catch (error) {
-      console.error("Error revoking coupon:", error);
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.message || "Failed to revoke coupon",
-        severity: "error",
-      });
-    }
+  const openDeleteDialog = (item) => {
+    setItemToDelete(item);
+    setDeleteDialogOpen(true);
   };
 
-  const handleBulkApply = async () => {
-    if (bulkWholesalers.length === 0) {
-      setSnackbar({
-        open: true,
-        message: "Please select at least one wholesaler",
-        severity: "error",
-      });
-      return;
-    }
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
 
-    if (!bulkCoupon) {
-      setSnackbar({
-        open: true,
-        message: "Please select a coupon",
-        severity: "error",
-      });
-      return;
-    }
-
-    const coupon = coupons.find(c => c._id === bulkCoupon);
-    setApplying(true);
-    
+    setSaving(true);
     try {
-      const result = await bulkApplyCoupon(bulkWholesalers, coupon.code);
-      
-      setSnackbar({
-        open: true,
-        message: result.message || `Applied to ${result.data?.success?.length || 0} wholesalers`,
-        severity: "success",
-      });
-      
-      await fetchStatistics();
-      setBulkWholesalers([]);
-      setBulkCoupon("");
-      
+      await deleteItem(itemToDelete._id);
+
+      setItems((prev) => prev.filter((i) => i._id !== itemToDelete._id));
+      toast("Ticker item deleted successfully", "success");
+
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
     } catch (error) {
-      console.error("Error bulk applying:", error);
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.message || "Failed to apply coupons",
-        severity: "error",
-      });
+      console.error("Error deleting ticker item:", error);
+      toast(
+        error.response?.data?.message || "Failed to delete ticker item",
+        "error"
+      );
     } finally {
-      setApplying(false);
+      setSaving(false);
     }
   };
 
-  const openRevokeDialog = (application) => {
-    setSelectedApplication(application);
-    setRevokeDialogOpen(true);
+  // ─────────────────────────────────────────────
+  // Settings handlers (Tab 1)
+  // ─────────────────────────────────────────────
+  const handleToggleActive = async () => {
+    setSaving(true);
+    try {
+      const body = await toggleActive();
+      const data = unwrap(body) || {};
+
+      const next =
+        typeof data.isActive === "boolean" ? data.isActive : !isActive;
+
+      setIsActive(next);
+      if (Array.isArray(data.items)) setItems(sortByOrder(data.items));
+
+      toast(`Ticker bar ${next ? "activated" : "deactivated"}`, "success");
+    } catch (error) {
+      console.error("Error toggling ticker bar:", error);
+      toast(
+        error.response?.data?.message || "Failed to toggle ticker bar",
+        "error"
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const selectedWholesalerDetails = wholesalers.find(w => w._id === selectedWholesaler);
-  const selectedCouponDetails = coupons.find(c => c._id === selectedCoupon);
+  const moveItem = (index, direction) => {
+    setItems((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
 
-  if (loading && !wholesalers.length) {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setOrderDirty(true);
+  };
+
+  const handleSaveAll = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        isActive,
+        items: items.map((it, idx) => ({ ...it, order: idx })),
+      };
+
+      const body = await updateTickerBar(payload);
+      const data = unwrap(body);
+
+      if (data && Array.isArray(data.items)) {
+        setItems(sortByOrder(data.items));
+      } else {
+        setItems(payload.items);
+      }
+
+      setOrderDirty(false);
+      toast("Ticker bar saved successfully", "success");
+    } catch (error) {
+      console.error("Error saving ticker bar:", error);
+      toast(
+        error.response?.data?.message || "Failed to save ticker bar",
+        "error"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────
+  // Derived
+  // ─────────────────────────────────────────────
+  const activeItems = items.filter((i) => i.isActive !== false);
+  const inactiveItems = items.filter((i) => i.isActive === false);
+
+  if (loading && !items.length) {
     return (
-      <Box sx={{ p: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <Box
+        sx={{
+          p: 4,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "60vh",
+        }}
+      >
         <CircularProgress sx={{ color: "#dc2626" }} />
       </Box>
     );
@@ -281,236 +329,402 @@ export default function WholesaleCouponManager() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: "auto" }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+      {/* ── Header ───────────────────────────── */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+        }}
+      >
         <Box>
           <Typography variant="h4" fontWeight="600" color="#1f2937">
-            Wholesale Coupon Management
+            Ticker Bar Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Apply coupons to wholesalers, track usage, and manage applications
+            Add announcements, reorder them, and control visibility on the
+            storefront
           </Typography>
         </Box>
+
         <Tooltip title="Refresh Data">
-          <IconButton onClick={() => { fetchInitialData(); fetchStatistics(); }}>
-            🔄
-          </IconButton>
+          <span>
+            <IconButton
+              onClick={fetchInitialData}
+              disabled={loading || saving}
+            >
+              {loading ? <CircularProgress size={22} /> : "🔄"}
+            </IconButton>
+          </span>
         </Tooltip>
       </Box>
 
-      {/* Statistics Cards */}
-      {statistics && (
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#fef2f2" }}>
-              <Typography variant="h4" fontWeight="700" color="#dc2626">
-                {statistics.totalApplications || 0}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">Total Applications</Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#f0fdf4" }}>
-              <Typography variant="h4" fontWeight="700" color="#16a34a">
-                {statistics.uniqueWholesalers || 0}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">Wholesalers Served</Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#fefce8" }}>
-              <Typography variant="h4" fontWeight="700" color="#ca8a04">
-                {statistics.uniqueCoupons || 0}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">Unique Coupons Used</Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#eff6ff" }}>
-              <Typography variant="h4" fontWeight="700" color="#2563eb">
-                {statistics.statusBreakdown?.find(s => s._id === "ACTIVE")?.count || 0}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">Active Coupons</Typography>
-            </Paper>
-          </Grid>
+      {/* ── Statistics Cards ─────────────────── */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#fef2f2" }}>
+            <Typography variant="h4" fontWeight="700" color="#dc2626">
+              {items.length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Total Items
+            </Typography>
+          </Paper>
         </Grid>
-      )}
 
-      <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-        <Tab label="Single Apply" />
-        <Tab label="Bulk Apply" />
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#f0fdf4" }}>
+            <Typography variant="h4" fontWeight="700" color="#16a34a">
+              {activeItems.length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Visible Items
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#fefce8" }}>
+            <Typography variant="h4" fontWeight="700" color="#ca8a04">
+              {inactiveItems.length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Hidden Items
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#eff6ff" }}>
+            <Typography
+              variant="h4"
+              fontWeight="700"
+              color={isActive ? "#2563eb" : "#9ca3af"}
+            >
+              {isActive ? "ON" : "OFF"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Ticker Status
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* ── Tabs ─────────────────────────────── */}
+      <Tabs
+        value={activeTab}
+        onChange={(e, v) => setActiveTab(v)}
+        sx={{ mb: 3 }}
+      >
+        <Tab label="Manage Items" />
+        <Tab label="Settings & Preview" />
       </Tabs>
 
-      {/* Tab 1: Single Apply */}
+      {/* ── Tab 1: Manage Items ──────────────── */}
       {activeTab === 0 && (
         <Grid container spacing={4}>
+          {/* Left — form */}
           <Grid item xs={12} md={7}>
-            <Card sx={{ borderRadius: 3, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
+            <Card
+              sx={{
+                borderRadius: 3,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+              }}
+            >
               <CardContent sx={{ p: 3 }}>
-                <Typography variant="h6" fontWeight="600" mb={3}>
-                  Apply Coupon to Wholesaler
-                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 3,
+                  }}
+                >
+                  <Typography variant="h6" fontWeight="600">
+                    {editingItem ? "Edit Ticker Item" : "Add Ticker Item"}
+                  </Typography>
 
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel>Select Wholesaler</InputLabel>
-                  <Select
-                    value={selectedWholesaler}
-                    onChange={handleWholesalerChange}
-                    label="Select Wholesaler"
-                    disabled={applying}
-                  >
-                    {wholesalers.map((wholesaler) => (
-                      <MenuItem key={wholesaler._id} value={wholesaler._id}>
-                        <Box sx={{ display: "flex", flexDirection: "column" }}>
-                          <Typography variant="body1" fontWeight="500">
-                            {wholesaler.storeName}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            PIN: {wholesaler.pincode || wholesaler.pin} | {wholesaler.city}
-                          </Typography>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  <FormHelperText>Select a wholesaler from the list</FormHelperText>
-                </FormControl>
+                  {editingItem && (
+                    <Chip
+                      label={`Editing: ${
+                        editingItem.text || editingItem.message
+                      }`}
+                      size="small"
+                      sx={{
+                        bgcolor: "#fee2e2",
+                        color: "#dc2626",
+                        maxWidth: 240,
+                      }}
+                    />
+                  )}
+                </Box>
 
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel>Select Coupon</InputLabel>
-                  <Select
-                    value={selectedCoupon}
-                    onChange={(e) => setSelectedCoupon(e.target.value)}
-                    label="Select Coupon"
-                    disabled={applying}
-                  >
-                    {coupons.map((coupon) => (
-                      <MenuItem key={coupon._id} value={coupon._id}>
-                        <Box sx={{ display: "flex", flexDirection: "column" }}>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <Typography variant="body1" fontWeight="600" color="#dc2626">
-                              {coupon.code}
-                            </Typography>
-                            <Chip 
-                              label={formatCouponDiscount(coupon)} 
-                              size="small" 
-                              sx={{ bgcolor: "#fee2e2", color: "#dc2626" }}
-                            />
-                          </Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Min Order: ₹{coupon.minOrderAmount?.toLocaleString()}
-                          </Typography>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  <FormHelperText>Select a coupon to apply</FormHelperText>
-                </FormControl>
+                <TextField
+                  fullWidth
+                  required
+                  label="Ticker Text"
+                  value={form.text}
+                  onChange={(e) => handleFormChange("text", e.target.value)}
+                  placeholder="e.g. Free shipping on orders above ₹999"
+                  sx={{ mb: 3 }}
+                  helperText="This is the announcement that scrolls on the storefront"
+                />
 
-                {(selectedWholesalerDetails || selectedCouponDetails) && (
-                  <Paper sx={{ p: 2, mb: 3, bgcolor: "#f9fafb", borderRadius: 2 }}>
-                    <Typography variant="subtitle2" fontWeight="600" mb={1}>
-                      Selected Details:
+                <TextField
+                  fullWidth
+                  label="Link (Optional)"
+                  value={form.link}
+                  onChange={(e) => handleFormChange("link", e.target.value)}
+                  placeholder="https://example.com/offers"
+                  sx={{ mb: 3 }}
+                  helperText="Clicking the ticker text will open this URL"
+                />
+
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Order"
+                  value={form.order}
+                  onChange={(e) => handleFormChange("order", e.target.value)}
+                  sx={{ mb: 2 }}
+                  helperText="Lower numbers appear first"
+                />
+
+                <FormControlLabel
+                  sx={{ mb: 3 }}
+                  control={
+                    <Switch
+                      checked={form.isActive}
+                      onChange={(e) =>
+                        handleFormChange("isActive", e.target.checked)
+                      }
+                      sx={{
+                        "& .MuiSwitch-switchBase.Mui-checked": {
+                          color: "#dc2626",
+                        },
+                        "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track":
+                          { bgcolor: "#dc2626" },
+                      }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      Visible on storefront
                     </Typography>
-                    {selectedWholesalerDetails && (
-                      <Box sx={{ mb: 1 }}>
-                        <Typography variant="body2">
-                          <strong>Wholesaler:</strong> {selectedWholesalerDetails.storeName}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Email:</strong> {selectedWholesalerDetails.email}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Phone:</strong> {selectedWholesalerDetails.phoneNumber}
-                        </Typography>
-                      </Box>
-                    )}
-                    {selectedCouponDetails && (
-                      <Box>
-                        <Divider sx={{ my: 1 }} />
-                        <Typography variant="body2">
-                          <strong>Coupon:</strong> {selectedCouponDetails.code}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Discount:</strong> {formatCouponDiscount(selectedCouponDetails)}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Valid Till:</strong> {new Date(selectedCouponDetails.validTill).toLocaleDateString()}
-                        </Typography>
-                      </Box>
+                  }
+                />
+
+                {/* Preview of current form */}
+                {(form.text || form.link) && (
+                  <Paper
+                    sx={{
+                      p: 2,
+                      mb: 3,
+                      bgcolor: "#f9fafb",
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="subtitle2" fontWeight="600" mb={1}>
+                      Preview:
+                    </Typography>
+                    <Box
+                      sx={{
+                        bgcolor: "#111827",
+                        color: "#fff",
+                        borderRadius: 1.5,
+                        py: 1,
+                        px: 2,
+                        overflow: "hidden",
+                        opacity: form.isActive ? 1 : 0.45,
+                      }}
+                    >
+                      <Typography
+                        component="span"
+                        sx={{ fontSize: 14, fontWeight: 500 }}
+                      >
+                        {form.text || "Your ticker text here"}
+                      </Typography>
+                    </Box>
+                    {form.link && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          display: "block",
+                          mt: 1,
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        🔗 {form.link}
+                      </Typography>
                     )}
                   </Paper>
                 )}
 
-                <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: 2,
+                    justifyContent: "flex-end",
+                  }}
+                >
                   <Button
                     variant="outlined"
-                    onClick={() => {
-                      setSelectedWholesaler("");
-                      setSelectedCoupon("");
-                    }}
+                    onClick={resetForm}
                     sx={secondaryButtonStyle}
                   >
-                    Reset
+                    {editingItem ? "Cancel Edit" : "Reset"}
                   </Button>
+
                   <Button
                     variant="contained"
-                    onClick={handleApplyCoupon}
-                    disabled={!selectedWholesaler || !selectedCoupon || applying}
+                    onClick={handleSubmitItem}
+                    disabled={!form.text.trim() || saving}
                     sx={primaryButtonStyle}
                   >
-                    {applying ? <CircularProgress size={24} sx={{ color: "white" }} /> : "Apply Coupon"}
+                    {saving ? (
+                      <CircularProgress
+                        size={24}
+                        sx={{ color: "white" }}
+                      />
+                    ) : editingItem ? (
+                      "Update Item"
+                    ) : (
+                      "Add Item"
+                    )}
                   </Button>
                 </Box>
               </CardContent>
             </Card>
           </Grid>
 
+          {/* Right — recent items list */}
           <Grid item xs={12} md={5}>
             <Card sx={{ borderRadius: 3 }}>
               <CardContent>
                 <Typography variant="h6" fontWeight="600" mb={2}>
-                  Recent Applications
+                  Ticker Items
                 </Typography>
-                {applicationHistory.length === 0 ? (
+
+                {items.length === 0 ? (
                   <Box sx={{ textAlign: "center", py: 4 }}>
                     <Typography sx={{ fontSize: 48, mb: 1 }}>🎫</Typography>
-                    <Typography color="text.secondary">No coupons applied yet</Typography>
+                    <Typography color="text.secondary">
+                      No ticker items yet
+                    </Typography>
                   </Box>
                 ) : (
-                  <Box sx={{ maxHeight: 400, overflowY: "auto" }}>
-                    {applicationHistory.map((app) => {
-                      const statusInfo = getCouponStatusInfo(app.status, app.expiryDate);
+                  <Box sx={{ maxHeight: 520, overflowY: "auto" }}>
+                    {items.map((item) => {
+                      const hidden = item.isActive === false;
+
                       return (
-                        <Paper key={app._id} sx={{ p: 2, mb: 2, bgcolor: "#f9fafb", position: "relative" }}>
-                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                            <Box>
-                              <Chip 
-                                label={app.couponCode} 
-                                size="small" 
-                                sx={{ bgcolor: "#dc2626", color: "white", mb: 1 }}
-                              />
-                              <Typography variant="body2">
-                                <strong>Discount:</strong> {formatCouponDiscount(app)}
-                              </Typography>
-                              <Typography variant="body2">
-                                <strong>Status:</strong> 
-                                <Chip 
-                                  label={statusInfo.text} 
-                                  size="small" 
-                                  color={statusInfo.color}
-                                  sx={{ ml: 1 }} 
+                        <Paper
+                          key={item._id}
+                          sx={{
+                            p: 2,
+                            mb: 2,
+                            bgcolor: "#f9fafb",
+                            position: "relative",
+                            borderLeft: hidden
+                              ? "4px solid #d1d5db"
+                              : "4px solid #dc2626",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 1,
+                            }}
+                          >
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                  mb: 0.5,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  fontWeight="600"
+                                  sx={{
+                                    wordBreak: "break-word",
+                                    textDecoration: hidden
+                                      ? "line-through"
+                                      : "none",
+                                    color: hidden ? "#9ca3af" : "#1f2937",
+                                  }}
+                                >
+                                  {item.text || item.message}
+                                </Typography>
+
+                                <Chip
+                                  label={hidden ? "Hidden" : "Visible"}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: hidden
+                                      ? "#f3f4f6"
+                                      : "#dcfce7",
+                                    color: hidden ? "#6b7280" : "#16a34a",
+                                    fontWeight: 600,
+                                  }}
                                 />
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Applied: {new Date(app.appliedAt).toLocaleString()}
+                              </Box>
+
+                              {item.link ? (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    display: "block",
+                                    wordBreak: "break-all",
+                                  }}
+                                >
+                                  🔗 {item.link}
+                                </Typography>
+                              ) : (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  No link attached
+                                </Typography>
+                              )}
+
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", mt: 0.5 }}
+                              >
+                                Order: {item.order ?? 0}
                               </Typography>
                             </Box>
-                            {app.status === "ACTIVE" && !isCouponExpired(app.expiryDate) && (
-                              <Tooltip title="Revoke Coupon">
-                                <IconButton size="small" onClick={() => openRevokeDialog(app)}>
-                                  🚫
+
+                            <Box sx={{ display: "flex", gap: 0.5 }}>
+                              <Tooltip title="Edit Item">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleEditClick(item)}
+                                >
+                                  ✏️
                                 </IconButton>
                               </Tooltip>
-                            )}
+
+                              <Tooltip title="Delete Item">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => openDeleteDialog(item)}
+                                >
+                                  🗑️
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
                           </Box>
                         </Paper>
                       );
@@ -523,112 +737,400 @@ export default function WholesaleCouponManager() {
         </Grid>
       )}
 
-      {/* Tab 2: Bulk Apply */}
+      {/* ── Tab 2: Settings & Preview ────────── */}
       {activeTab === 1 && (
-        <Card sx={{ borderRadius: 3 }}>
-          <CardContent sx={{ p: 3 }}>
-            <Typography variant="h6" fontWeight="600" mb={3}>
-              Bulk Apply Coupon to Multiple Wholesalers
-            </Typography>
+        <Grid container spacing={4}>
+          {/* Left — settings + reorder */}
+          <Grid item xs={12} md={7}>
+            <Card
+              sx={{
+                borderRadius: 3,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+              }}
+            >
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="h6" fontWeight="600" mb={3}>
+                  Ticker Settings
+                </Typography>
 
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>Select Wholesalers (Multiple)</InputLabel>
-              <Select
-                multiple
-                value={bulkWholesalers}
-                onChange={(e) => setBulkWholesalers(e.target.value)}
-                label="Select Wholesalers (Multiple)"
-                renderValue={(selected) => (
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                    {selected.map((value) => {
-                      const wholesaler = wholesalers.find(w => w._id === value);
-                      return (
-                        <Chip 
-                          key={value} 
-                          label={wholesaler?.storeName} 
-                          size="small" 
-                          sx={{ bgcolor: "#fee2e2" }}
+                <Paper
+                  sx={{
+                    p: 2,
+                    mb: 3,
+                    bgcolor: "#f9fafb",
+                    borderRadius: 2,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body1" fontWeight="600">
+                      Ticker Status
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Turn the ticker bar on or off across the storefront
+                    </Typography>
+                  </Box>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={isActive}
+                        onChange={handleToggleActive}
+                        disabled={saving}
+                        sx={{
+                          "& .MuiSwitch-switchBase.Mui-checked": {
+                            color: "#dc2626",
+                          },
+                          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track":
+                            { bgcolor: "#dc2626" },
+                        }}
+                      />
+                    }
+                    label={
+                      <Chip
+                        label={isActive ? "Active" : "Inactive"}
+                        size="small"
+                        sx={{
+                          bgcolor: isActive ? "#dcfce7" : "#f3f4f6",
+                          color: isActive ? "#16a34a" : "#6b7280",
+                          fontWeight: 600,
+                        }}
+                      />
+                    }
+                  />
+                </Paper>
+
+                <Divider sx={{ mb: 3 }} />
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="600">
+                      Reorder Items
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Use arrows to change the display order, then save
+                    </Typography>
+                  </Box>
+
+                  {orderDirty && (
+                    <Button
+                      variant="contained"
+                      onClick={handleSaveAll}
+                      disabled={saving}
+                      sx={primaryButtonStyle}
+                    >
+                      {saving ? (
+                        <CircularProgress
+                          size={22}
+                          sx={{ color: "white" }}
                         />
-                      );
-                    })}
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </Button>
+                  )}
+                </Box>
+
+                {items.length === 0 ? (
+                  <Box sx={{ textAlign: "center", py: 4 }}>
+                    <Typography sx={{ fontSize: 40, mb: 1 }}>🎫</Typography>
+                    <Typography color="text.secondary">
+                      No items to reorder
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1.5,
+                    }}
+                  >
+                    {items.map((item, index) => (
+                      <Paper
+                        key={item._id}
+                        sx={{
+                          p: 2,
+                          bgcolor: "#fff",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 2,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 2,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Tooltip title="Move up">
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={index === 0}
+                                onClick={() => moveItem(index, -1)}
+                              >
+                                ▲
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+
+                          <Chip
+                            label={index + 1}
+                            size="small"
+                            sx={{
+                              bgcolor: "#fee2e2",
+                              color: "#dc2626",
+                              my: 0.5,
+                            }}
+                          />
+
+                          <Tooltip title="Move down">
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={index === items.length - 1}
+                                onClick={() => moveItem(index, 1)}
+                              >
+                                ▼
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            fontWeight="600"
+                            sx={{
+                              wordBreak: "break-word",
+                              color:
+                                item.isActive === false
+                                  ? "#9ca3af"
+                                  : "#1f2937",
+                            }}
+                          >
+                            {item.text || item.message}
+                          </Typography>
+
+                          {item.link && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ wordBreak: "break-all" }}
+                            >
+                              🔗 {item.link}
+                            </Typography>
+                          )}
+                        </Box>
+
+                        {item.isActive === false && (
+                          <Chip
+                            label="Hidden"
+                            size="small"
+                            sx={{
+                              bgcolor: "#f3f4f6",
+                              color: "#6b7280",
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
+                      </Paper>
+                    ))}
                   </Box>
                 )}
-              >
-                {wholesalers.map((wholesaler) => (
-                  <MenuItem key={wholesaler._id} value={wholesaler._id}>
-                    <Box sx={{ display: "flex", flexDirection: "column" }}>
-                      <Typography>{wholesaler.storeName}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {wholesaler.city} - {wholesaler.pincode || wholesaler.pin}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>You can select multiple wholesalers</FormHelperText>
-            </FormControl>
 
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>Select Coupon</InputLabel>
-              <Select
-                value={bulkCoupon}
-                onChange={(e) => setBulkCoupon(e.target.value)}
-                label="Select Coupon"
-              >
-                {coupons.map((coupon) => (
-                  <MenuItem key={coupon._id} value={coupon._id}>
-                    <Box sx={{ display: "flex", flexDirection: "column" }}>
-                      <Typography fontWeight="600" color="#dc2626">{coupon.code}</Typography>
-                      <Typography variant="caption">{formatCouponDiscount(coupon)}</Typography>
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                {orderDirty && (
+                  <Alert severity="warning" sx={{ mt: 3 }}>
+                    You have unsaved order changes. Click{" "}
+                    <strong>Save Changes</strong> to persist the new order.
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
 
-            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button
-                variant="contained"
-                onClick={handleBulkApply}
-                disabled={bulkWholesalers.length === 0 || !bulkCoupon || applying}
-                sx={primaryButtonStyle}
-              >
-                {applying ? <CircularProgress size={24} /> : `Apply to ${bulkWholesalers.length} Wholesaler(s)`}
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
+          {/* Right — live preview */}
+          <Grid item xs={12} md={5}>
+            <Card sx={{ borderRadius: 3 }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight="600" mb={2}>
+                  Live Preview
+                </Typography>
+
+                {activeItems.length === 0 ? (
+                  <Box sx={{ textAlign: "center", py: 4 }}>
+                    <Typography sx={{ fontSize: 48, mb: 1 }}>📢</Typography>
+                    <Typography color="text.secondary">
+                      No visible items yet
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      overflow: "hidden",
+                      bgcolor: "#111827",
+                      color: "#fff",
+                      borderRadius: 2,
+                      py: 1.2,
+                      opacity: isActive ? 1 : 0.45,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "inline-flex",
+                        gap: 6,
+                        whiteSpace: "nowrap",
+                        animation: isActive
+                          ? "tickerScroll 25s linear infinite"
+                          : "none",
+                        "@keyframes tickerScroll": {
+                          "0%": { transform: "translateX(0)" },
+                          "100%": { transform: "translateX(-50%)" },
+                        },
+                        "&:hover": { animationPlayState: "paused" },
+                      }}
+                    >
+                      {[...activeItems, ...activeItems].map((item, idx) => (
+                        <Typography
+                          key={`${item._id}-${idx}`}
+                          component="span"
+                          sx={{ fontSize: 14, fontWeight: 500 }}
+                        >
+                          {item.link ? (
+                            <a
+                              href={item.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                color: "#fca5a5",
+                                textDecoration: "none",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {item.text || item.message}
+                            </a>
+                          ) : (
+                            item.text || item.message
+                          )}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {!isActive && activeItems.length > 0 && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    The ticker bar is currently <strong>inactive</strong> and
+                    will not be shown on the storefront.
+                  </Alert>
+                )}
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" fontWeight="600" mb={1}>
+                  Summary
+                </Typography>
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    mb: 0.5,
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    Total items
+                  </Typography>
+                  <Typography variant="body2" fontWeight="600">
+                    {items.length}
+                  </Typography>
+                </Box>
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    mb: 0.5,
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    Visible items
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight="600"
+                    color="#16a34a"
+                  >
+                    {activeItems.length}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Hidden items
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight="600"
+                    color="#6b7280"
+                  >
+                    {inactiveItems.length}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       )}
 
-      {/* Revoke Dialog */}
-      <Dialog open={revokeDialogOpen} onClose={() => setRevokeDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Revoke Coupon</DialogTitle>
+      {/* ── Delete Dialog ────────────────────── */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete Ticker Item</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Are you sure you want to revoke coupon <strong>{selectedApplication?.couponCode}</strong>?
+          <Typography variant="body2">
+            Are you sure you want to delete{" "}
+            <strong>{itemToDelete?.text || itemToDelete?.message}</strong>?
+            This action cannot be undone.
           </Typography>
-          <TextField
-            fullWidth
-            label="Reason (Optional)"
-            multiline
-            rows={3}
-            value={revokeReason}
-            onChange={(e) => setRevokeReason(e.target.value)}
-            placeholder="Enter reason for revoking this coupon"
-          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRevokeDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleRevokeCoupon} variant="contained" color="error">
-            Revoke Coupon
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleDeleteItem}
+            variant="contained"
+            color="error"
+            disabled={saving}
+          >
+            {saving ? <CircularProgress size={22} /> : "Delete Item"}
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* ── Snackbar ─────────────────────────── */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
-        onClose={() => setSnackbar({ open: false, message: "", severity: "success" })}
+        onClose={() =>
+          setSnackbar({ open: false, message: "", severity: "success" })
+        }
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
