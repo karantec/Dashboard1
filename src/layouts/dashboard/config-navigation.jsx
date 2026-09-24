@@ -64,11 +64,11 @@ const navConfig = [
     path: '/Complain',
     icon: icon('ic_blog'),
   },
-  {
-    title: 'Generate Coupan Code',
-    path: '/Promocode',
-    icon: icon('ic_lock'),
-  },
+  // {
+  //   title: 'Generate Coupan Code',
+  //   path: '/Promocode',
+  //   icon: icon('ic_lock'),
+  // },
    {
     title: 'Testimonial',
     path: '/testi',

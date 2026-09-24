@@ -1,7 +1,7 @@
 /* eslint-disable perfectionist/sort-named-imports */
 /* eslint-disable react/prop-types */
 /* eslint-disable */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Container,
   Stack,
@@ -30,7 +30,15 @@ import {
   CircularProgress,
 } from "@mui/material";
 
-const API_BASE_URL = "https://my-project-backend-ee4t.onrender.com/api/complaint";
+// ─── API base (adjust to your env) ────────────────────────────────
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "https://lifestyle-backend-lime.vercel.app";
+
+const getAdminToken = () =>
+  localStorage.getItem("adminToken") ||
+  localStorage.getItem("admin_token") ||
+  localStorage.getItem("token") ||
+  null;
 
 // ─── Theme tokens ────────────────────────────────────────────────
 const theme = {
@@ -46,15 +54,21 @@ const theme = {
   textSecondary: "#4A6FA5",
   textMuted: "#7B9CC0",
   // status
-  pendingBg: "#FFF3E0",
-  pendingText: "#E65100",
-  pendingBorder: "#FFCC02",
-  inReviewBg: "#E3F2FD",
-  inReviewText: "#1565C0",
-  inReviewBorder: "#90CAF9",
+  openBg: "#FFF3E0",
+  openText: "#E65100",
+  openBorder: "#FFCC80",
+  inProgressBg: "#E3F2FD",
+  inProgressText: "#1565C0",
+  inProgressBorder: "#90CAF9",
+  awaitingBg: "#F3E5F5",
+  awaitingText: "#6A1B9A",
+  awaitingBorder: "#CE93D8",
   resolvedBg: "#E8F5E9",
   resolvedText: "#2E7D32",
   resolvedBorder: "#81C784",
+  closedBg: "#ECEFF1",
+  closedText: "#455A64",
+  closedBorder: "#B0BEC5",
   rejectedBg: "#FFEBEE",
   rejectedText: "#C62828",
   rejectedBorder: "#EF9A9A",
@@ -69,21 +83,130 @@ const theme = {
   lowText: "#2E7D32",
 };
 
-// ─── API ─────────────────────────────────────────────────────────
+// ─── Enum maps ────────────────────────────────────────────────────
+const STATUS_LABELS = {
+  open: "Open",
+  in_progress: "In Progress",
+  awaiting_customer: "Awaiting Customer",
+  resolved: "Resolved",
+  closed: "Closed",
+  rejected: "Rejected",
+};
+
+const PRIORITY_LABELS = {
+  urgent: "Urgent",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+const CATEGORY_LABELS = {
+  damaged: "Damaged Product",
+  wrong_item: "Wrong Item",
+  quality: "Quality Issue",
+  not_received: "Not Received",
+  late_delivery: "Late Delivery",
+  refund_issue: "Refund Issue",
+  other: "Other",
+};
+
+// ─── API ──────────────────────────────────────────────────────────
 const complaintApi = {
-  getAll: async () => {
-    const res = await fetch(API_BASE_URL);
+  // GET /api/admin/complaints?page=&limit=&status=&priority=&category=&search=
+  getAll: async (params = {}) => {
+    const token = getAdminToken();
+    if (!token) throw new Error("No admin token. Please log in as admin.");
+
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") qs.append(k, v);
+    });
+
+    const res = await fetch(
+      `${API_BASE_URL}/api/admin/complaints?${qs.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
     const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || "Failed to load complaints");
+    return data; // { success, pagination, count, data: [...] }
+  },
+
+  // GET /api/admin/complaints/stats
+  getStats: async () => {
+    const token = getAdminToken();
+    const res = await fetch(`${API_BASE_URL}/api/admin/complaints/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message);
     return data.data;
   },
-  updateStatus: async (id, status, resolution) => {
-    const res = await fetch(`${API_BASE_URL}/${id}/status`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status, resolution }),
+
+  // GET /api/admin/complaints/:id  (with messages thread)
+  getOne: async (id) => {
+    const token = getAdminToken();
+    const res = await fetch(`${API_BASE_URL}/api/admin/complaints/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  },
+
+  // PUT /api/admin/complaints/:id/status
+  updateStatus: async (id, status, admin_notes) => {
+    const token = getAdminToken();
+    const res = await fetch(
+      `${API_BASE_URL}/api/admin/complaints/${id}/status`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status, admin_notes }),
+      }
+    );
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  },
+
+  // PUT /api/admin/complaints/:id/priority
+  updatePriority: async (id, priority) => {
+    const token = getAdminToken();
+    const res = await fetch(
+      `${API_BASE_URL}/api/admin/complaints/${id}/priority`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ priority }),
+      }
+    );
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  },
+
+  // POST /api/admin/complaints/:id/messages
+  reply: async (id, message, mark_in_progress = true) => {
+    const token = getAdminToken();
+    const res = await fetch(
+      `${API_BASE_URL}/api/admin/complaints/${id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message, mark_in_progress }),
+      }
+    );
     const data = await res.json();
     if (!data.success) throw new Error(data.message);
     return data.data;
@@ -93,7 +216,13 @@ const complaintApi = {
 // ─── Helpers ─────────────────────────────────────────────────────
 const getInitials = (name) => {
   if (!name || !name.trim()) return "?";
-  return name.trim().split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return name
+    .trim()
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 };
 
 const formatDate = (iso) => {
@@ -105,106 +234,113 @@ const formatDate = (iso) => {
   });
 };
 
-// ─── Status chip styles ───────────────────────────────────────────
+const formatDateTime = (iso) => {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const statusStyle = (status) => {
   switch (status) {
-    case "Pending":
-      return { bgcolor: theme.pendingBg, color: theme.pendingText, borderColor: theme.pendingBorder };
-    case "In Review":
-      return { bgcolor: theme.inReviewBg, color: theme.inReviewText, borderColor: theme.inReviewBorder };
-    case "Resolved":
+    case "open":
+      return { bgcolor: theme.openBg, color: theme.openText, borderColor: theme.openBorder };
+    case "in_progress":
+      return { bgcolor: theme.inProgressBg, color: theme.inProgressText, borderColor: theme.inProgressBorder };
+    case "awaiting_customer":
+      return { bgcolor: theme.awaitingBg, color: theme.awaitingText, borderColor: theme.awaitingBorder };
+    case "resolved":
       return { bgcolor: theme.resolvedBg, color: theme.resolvedText, borderColor: theme.resolvedBorder };
-    case "Rejected":
+    case "closed":
+      return { bgcolor: theme.closedBg, color: theme.closedText, borderColor: theme.closedBorder };
+    case "rejected":
       return { bgcolor: theme.rejectedBg, color: theme.rejectedText, borderColor: theme.rejectedBorder };
     default:
       return { bgcolor: theme.primaryBg, color: theme.primary, borderColor: theme.primaryBgDeep };
   }
 };
 
-// ─── Priority chip styles ─────────────────────────────────────────
 const priorityStyle = (priority) => {
   switch (priority) {
-    case "Urgent":
+    case "urgent":
       return { bgcolor: theme.urgentBg, color: theme.urgentText };
-    case "High":
+    case "high":
       return { bgcolor: theme.highBg, color: theme.highText };
-    case "Medium":
+    case "medium":
       return { bgcolor: theme.mediumBg, color: theme.mediumText };
-    case "Low":
+    case "low":
       return { bgcolor: theme.lowBg, color: theme.lowText };
     default:
       return { bgcolor: theme.primaryBg, color: theme.primary };
   }
 };
 
-// ─── Priority bar color ───────────────────────────────────────────
 const priorityBarColor = (priority) => {
   switch (priority) {
-    case "Urgent": return theme.urgentText;
-    case "High": return theme.highText;
-    case "Medium": return theme.mediumText;
-    case "Low": return theme.lowText;
+    case "urgent": return theme.urgentText;
+    case "high": return theme.highText;
+    case "medium": return theme.mediumText;
+    case "low": return theme.lowText;
     default: return theme.primary;
   }
 };
 
-// ─── Priority display helper ──────────────────────────────────────
 const getPriorityIcon = (priority) => {
   switch (priority) {
-    case "Urgent": return "🔴";
-    case "High": return "🟠";
-    case "Medium": return "🟡";
-    case "Low": return "🟢";
+    case "urgent": return "🔴";
+    case "high": return "🟠";
+    case "medium": return "🟡";
+    case "low": return "🟢";
     default: return "⚪";
   }
 };
 
-// ─── DetailRow helper ─────────────────────────────────────────────
+// ─── Small components ────────────────────────────────────────────
 const DetailRow = ({ icon, label, value }) => (
   <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
     <Box sx={{ color: theme.primary, mt: "2px", flexShrink: 0 }}>{icon}</Box>
-    <Box>
+    <Box sx={{ minWidth: 0 }}>
       <Typography sx={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.8px", color: theme.textMuted, fontWeight: 600, mb: "2px" }}>
         {label}
       </Typography>
-      <Typography sx={{ fontSize: "0.9rem", color: theme.textPrimary, lineHeight: 1.5 }}>
+      <Typography sx={{ fontSize: "0.9rem", color: theme.textPrimary, lineHeight: 1.5, wordBreak: "break-word" }}>
         {value || "—"}
       </Typography>
     </Box>
   </Box>
 );
 
-// ─── Skeleton Card ────────────────────────────────────────────────
 const SkeletonCard = () => (
   <Card sx={{ borderRadius: 3, border: `1px solid ${theme.border}`, boxShadow: "none", overflow: "hidden" }}>
     <Box sx={{ height: 4, bgcolor: theme.primaryBgDeep }} />
     <CardContent>
       {[80, 95, 60].map((w, i) => (
-        <Box key={i} sx={{ height: 12, bgcolor: theme.primaryBg, borderRadius: 1, mb: 1.5, width: `${w}%`,
-          animation: "pulse 1.4s ease infinite", animationDelay: `${i * 0.15}s`,
-          "@keyframes pulse": { "0%,100%": { opacity: 1 }, "50%": { opacity: 0.4 } }
-        }} />
+        <Box
+          key={i}
+          sx={{
+            height: 12, bgcolor: theme.primaryBg, borderRadius: 1, mb: 1.5, width: `${w}%`,
+            animation: "pulse 1.4s ease infinite", animationDelay: `${i * 0.15}s`,
+            "@keyframes pulse": { "0%,100%": { opacity: 1 }, "50%": { opacity: 0.4 } },
+          }}
+        />
       ))}
       <Box sx={{ height: 36, bgcolor: theme.primaryBg, borderRadius: 2, mt: 2 }} />
     </CardContent>
   </Card>
 );
 
-// ─── Filter Button ────────────────────────────────────────────────
 const FilterBtn = ({ label, active, onClick, color }) => (
   <Button
     onClick={onClick}
     size="small"
     variant={active ? "contained" : "outlined"}
     sx={{
-      borderRadius: 20,
-      px: 2,
-      py: 0.5,
-      fontSize: "0.75rem",
-      fontWeight: 600,
-      textTransform: "none",
-      letterSpacing: "0.3px",
-      minWidth: 0,
+      borderRadius: 20, px: 2, py: 0.5,
+      fontSize: "0.75rem", fontWeight: 600,
+      textTransform: "none", letterSpacing: "0.3px", minWidth: 0,
       ...(active
         ? { bgcolor: color || theme.primary, borderColor: color || theme.primary, color: "#fff", "&:hover": { bgcolor: color || theme.primaryLight } }
         : { borderColor: theme.border, color: color || theme.textSecondary, bgcolor: "transparent", "&:hover": { bgcolor: theme.primaryBg, borderColor: theme.primaryLighter } }),
@@ -214,29 +350,25 @@ const FilterBtn = ({ label, active, onClick, color }) => (
   </Button>
 );
 
-// ─── Status Update Dialog Component ───────────────────────────────
+// ─── Status Update Dialog ────────────────────────────────────────
 const StatusUpdateDialog = ({ open, complaint, onClose, onUpdate, loading }) => {
-  const [selectedStatus, setSelectedStatus] = useState("Resolved");
-  const [resolution, setResolution] = useState("");
-  const [errors, setErrors] = useState({});
+  const [selectedStatus, setSelectedStatus] = useState("resolved");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
 
   const handleSubmit = () => {
-    const newErrors = {};
-    if (!resolution.trim()) {
-      newErrors.resolution = "Resolution details are required";
-    }
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+    if (!notes.trim()) {
+      setError("Resolution notes are required.");
       return;
     }
-    onUpdate(complaint._id, selectedStatus, resolution);
+    onUpdate(complaint._id, selectedStatus, notes);
   };
 
   useEffect(() => {
     if (!open) {
-      setResolution("");
-      setSelectedStatus("Resolved");
-      setErrors({});
+      setNotes("");
+      setSelectedStatus("resolved");
+      setError("");
     }
   }, [open]);
 
@@ -249,50 +381,38 @@ const StatusUpdateDialog = ({ open, complaint, onClose, onUpdate, loading }) => 
           <Typography sx={{ fontWeight: 700, color: theme.textPrimary }}>
             Update Complaint Status
           </Typography>
-          <Button
-            onClick={onClose}
-            size="small"
-            sx={{ minWidth: 0, p: 0.5, color: theme.textMuted }}
-          >
+          <Button onClick={onClose} size="small" sx={{ minWidth: 0, p: 0.5, color: theme.textMuted }}>
             ✕
           </Button>
         </Stack>
         <Typography variant="body2" sx={{ color: theme.textMuted, mt: 0.5 }}>
-          {complaint.title}
+          {complaint.subject}
         </Typography>
       </DialogTitle>
       <DialogContent>
         <FormControl component="fieldset" sx={{ mb: 3, mt: 1 }}>
           <FormLabel component="legend" sx={{ fontWeight: 600, mb: 1 }}>
-            Resolution Status
+            New Status
           </FormLabel>
           <RadioGroup
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            row
+            sx={{ gap: 0.5 }}
           >
-            <FormControlLabel 
-              value="Resolved" 
-              control={<Radio />} 
-              label={
-                <Chip 
-                  label="Resolved" 
-                  size="small" 
-                  sx={statusStyle("Resolved")}
-                />
-              }
-            />
-            <FormControlLabel 
-              value="Rejected" 
-              control={<Radio />} 
-              label={
-                <Chip 
-                  label="Rejected" 
-                  size="small" 
-                  sx={statusStyle("Rejected")}
-                />
-              }
-            />
+            {["in_progress", "awaiting_customer", "resolved", "rejected", "closed"].map((s) => (
+              <FormControlLabel
+                key={s}
+                value={s}
+                control={<Radio />}
+                label={
+                  <Chip
+                    label={STATUS_LABELS[s]}
+                    size="small"
+                    sx={{ ...statusStyle(s), border: "1px solid", fontWeight: 700 }}
+                  />
+                }
+              />
+            ))}
           </RadioGroup>
         </FormControl>
 
@@ -300,16 +420,15 @@ const StatusUpdateDialog = ({ open, complaint, onClose, onUpdate, loading }) => 
           fullWidth
           multiline
           rows={4}
-          label="Resolution Details"
-          placeholder={`Please provide detailed ${selectedStatus.toLowerCase()} notes explaining the outcome...`}
-          value={resolution}
+          label="Admin Notes / Resolution Details"
+          placeholder="Explain the outcome. This is stored in admin_notes and visible only to admins."
+          value={notes}
           onChange={(e) => {
-            setResolution(e.target.value);
-            if (errors.resolution) setErrors({});
+            setNotes(e.target.value);
+            if (error) setError("");
           }}
-          error={!!errors.resolution}
-          helperText={errors.resolution}
-          sx={{ mb: 2 }}
+          error={!!error}
+          helperText={error}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
@@ -321,13 +440,13 @@ const StatusUpdateDialog = ({ open, complaint, onClose, onUpdate, loading }) => 
           variant="contained"
           disabled={loading}
           sx={{
-            bgcolor: selectedStatus === "Resolved" ? theme.resolvedText : theme.rejectedText,
+            bgcolor: selectedStatus === "resolved" ? theme.resolvedText : theme.primary,
             "&:hover": {
-              bgcolor: selectedStatus === "Resolved" ? "#1B5E20" : "#B71C1C",
+              bgcolor: selectedStatus === "resolved" ? "#1B5E20" : theme.primaryLight,
             },
           }}
         >
-          {loading ? <CircularProgress size={24} /> : `Mark as ${selectedStatus}`}
+          {loading ? <CircularProgress size={24} /> : `Mark as ${STATUS_LABELS[selectedStatus]}`}
         </Button>
       </DialogActions>
     </Dialog>
@@ -337,46 +456,101 @@ const StatusUpdateDialog = ({ open, complaint, onClose, onUpdate, loading }) => 
 // ─── Main Component ───────────────────────────────────────────────
 export default function ComplaintView() {
   const [complaints, setComplaints] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [activePriority, setActivePriority] = useState("all");
   const [search, setSearch] = useState("");
+
   const [selected, setSelected] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const [statusUpdateOpen, setStatusUpdateOpen] = useState(false);
   const [selectedForUpdate, setSelectedForUpdate] = useState(null);
   const [updating, setUpdating] = useState(false);
+
+  const [replyText, setReplyText] = useState("");
+  const [replying, setReplying] = useState(false);
+
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "info" });
 
-  const fetchComplaints = async () => {
+  // ─── Fetch list ────────────────────────────────────────────
+  const fetchComplaints = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const data = await complaintApi.getAll();
-      setComplaints(data || []);
+      const params = { page: 1, limit: 100 };
+      if (activeStatus !== "all") params.status = activeStatus;
+      if (activePriority !== "all") params.priority = activePriority;
+      if (search.trim()) params.search = search.trim();
+
+      const res = await complaintApi.getAll(params);
+      setComplaints(res.data || []);
     } catch (e) {
-      setError("Failed to load complaints. Please check your connection.");
+      console.error(e);
+      setError(e.message || "Failed to load complaints.");
+      setComplaints([]);
     } finally {
       setLoading(false);
     }
+  }, [activeStatus, activePriority, search]);
+
+  // ─── Fetch stats ───────────────────────────────────────────
+  const fetchStats = useCallback(async () => {
+    try {
+      const s = await complaintApi.getStats();
+      setStats(s);
+    } catch (e) {
+      console.error("Stats fetch failed:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchComplaints();
+  }, [fetchComplaints]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  // ─── Open detail ───────────────────────────────────────────
+  const openDetail = async (complaint) => {
+    setSelected(complaint);      // Show immediately with list data
+    setDetailLoading(true);
+    try {
+      const full = await complaintApi.getOne(complaint._id);
+      setSelected(full);         // Replace with full data (with messages thread)
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  const handleStatusUpdate = async (id, status, resolution) => {
+  // ─── Status update ─────────────────────────────────────────
+  const handleStatusUpdate = async (id, status, admin_notes) => {
     setUpdating(true);
     try {
-      await complaintApi.updateStatus(id, status, resolution);
+      await complaintApi.updateStatus(id, status, admin_notes);
       setSnackbar({
         open: true,
-        message: `Complaint successfully marked as ${status.toLowerCase()}`,
+        message: `Complaint marked as ${STATUS_LABELS[status]}`,
         severity: "success",
       });
       setStatusUpdateOpen(false);
       setSelectedForUpdate(null);
+      // Refresh list + detail + stats
       await fetchComplaints();
+      await fetchStats();
+      if (selected?._id === id) {
+        const fresh = await complaintApi.getOne(id);
+        setSelected(fresh);
+      }
     } catch (err) {
       setSnackbar({
         open: true,
-        message: err.message || "Failed to update complaint status",
+        message: err.message || "Failed to update status",
         severity: "error",
       });
     } finally {
@@ -384,28 +558,50 @@ export default function ComplaintView() {
     }
   };
 
-  useEffect(() => { fetchComplaints(); }, []);
+  // ─── Reply ─────────────────────────────────────────────────
+  const handleReply = async () => {
+    if (!replyText.trim() || !selected) return;
+    setReplying(true);
+    try {
+      await complaintApi.reply(selected._id, replyText.trim(), true);
+      setReplyText("");
+      setSnackbar({ open: true, message: "Reply posted", severity: "success" });
+      // Refresh the detail with new message
+      const fresh = await complaintApi.getOne(selected._id);
+      setSelected(fresh);
+      await fetchComplaints();
+      await fetchStats();
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message: err.message || "Failed to post reply",
+        severity: "error",
+      });
+    } finally {
+      setReplying(false);
+    }
+  };
 
-  // ── Derived stats ──
-  const total = complaints.length;
-  const pending = complaints.filter((c) => c.status === "Pending").length;
-  const inReview = complaints.filter((c) => c.status === "In Review").length;
-  const resolved = complaints.filter((c) => c.status === "Resolved").length;
+  // ─── Derived stats (fallback if API stats missing) ────────
+  const total = stats?.total ?? complaints.length;
+  const open = stats?.byStatus?.open ?? complaints.filter((c) => c.status === "open").length;
+  const inProgress =
+    stats?.byStatus?.in_progress ?? complaints.filter((c) => c.status === "in_progress").length;
+  const resolvedCount = stats?.byStatus?.resolved ?? complaints.filter((c) => c.status === "resolved").length;
 
-  // ── Filtered list ──
+  // ─── Client-side filter (search only; status/priority already applied server-side) ─
   const filtered = complaints.filter((c) => {
-    const matchStatus = activeStatus === "all" || c.status === activeStatus;
-    const matchPriority = activePriority === "all" || c.priority === activePriority;
-    const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      (c.title || "").toLowerCase().includes(q) ||
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (c.subject || "").toLowerCase().includes(q) ||
       (c.description || "").toLowerCase().includes(q) ||
-      (c.complainantName || "").toLowerCase().includes(q) ||
+      (c.customer_name || "").toLowerCase().includes(q) ||
+      (c.customer_email || "").toLowerCase().includes(q) ||
       (c.category || "").toLowerCase().includes(q) ||
-      (c.orderId || "").toLowerCase().includes(q) ||
-      (c.productName || "").toLowerCase().includes(q);
-    return matchStatus && matchPriority && matchSearch;
+      (c.razorpay_order_id || "").toLowerCase().includes(q) ||
+      (c.product_name || "").toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -415,8 +611,7 @@ export default function ComplaintView() {
         sx={{
           background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryLight} 60%, ${theme.primaryLighter} 100%)`,
           pt: 5, pb: 6, px: 3,
-          position: "relative",
-          overflow: "hidden",
+          position: "relative", overflow: "hidden",
           "&::before": {
             content: '""',
             position: "absolute", inset: 0,
@@ -431,11 +626,8 @@ export default function ComplaintView() {
                 sx={{
                   fontFamily: "'Georgia', serif",
                   fontSize: { xs: "1.8rem", md: "2.4rem" },
-                  fontWeight: 700,
-                  color: "#fff",
-                  letterSpacing: "-0.5px",
-                  lineHeight: 1.1,
-                  mb: 0.5,
+                  fontWeight: 700, color: "#fff",
+                  letterSpacing: "-0.5px", lineHeight: 1.1, mb: 0.5,
                 }}
               >
                 Complaint Management
@@ -445,13 +637,12 @@ export default function ComplaintView() {
               </Typography>
             </Box>
 
-            {/* Stats */}
             <Stack direction="row" gap={2}>
               {[
                 { label: "Total", val: total, color: "#fff" },
-                { label: "Pending", val: pending, color: "#FFD54F" },
-                { label: "In Review", val: inReview, color: "#90CAF9" },
-                { label: "Resolved", val: resolved, color: "#A5D6A7" },
+                { label: "Open", val: open, color: "#FFD54F" },
+                { label: "In Progress", val: inProgress, color: "#90CAF9" },
+                { label: "Resolved", val: resolvedCount, color: "#A5D6A7" },
               ].map((s) => (
                 <Box
                   key={s.label}
@@ -462,7 +653,7 @@ export default function ComplaintView() {
                     borderRadius: 3,
                     px: 3, py: 1.5,
                     border: "1px solid rgba(255,255,255,0.2)",
-                    minWidth: 72,
+                    minWidth: 78,
                   }}
                 >
                   <Typography sx={{ fontFamily: "'Georgia', serif", fontSize: "1.5rem", fontWeight: 700, color: s.color, lineHeight: 1 }}>
@@ -487,29 +678,28 @@ export default function ComplaintView() {
             border: `1px solid ${theme.border}`,
             boxShadow: "0 4px 20px rgba(21,101,192,0.08)",
             px: 3, py: 2,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 1.5,
-            alignItems: "center",
+            display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center",
           }}
         >
           <FilterBtn label="All" active={activeStatus === "all"} onClick={() => setActiveStatus("all")} />
-          <FilterBtn label="Pending" active={activeStatus === "Pending"} onClick={() => setActiveStatus("Pending")} color={theme.pendingText} />
-          <FilterBtn label="In Review" active={activeStatus === "In Review"} onClick={() => setActiveStatus("In Review")} color={theme.inReviewText} />
-          <FilterBtn label="Resolved" active={activeStatus === "Resolved"} onClick={() => setActiveStatus("Resolved")} color={theme.resolvedText} />
-          <FilterBtn label="Rejected" active={activeStatus === "Rejected"} onClick={() => setActiveStatus("Rejected")} color={theme.rejectedText} />
+          <FilterBtn label="Open" active={activeStatus === "open"} onClick={() => setActiveStatus("open")} color={theme.openText} />
+          <FilterBtn label="In Progress" active={activeStatus === "in_progress"} onClick={() => setActiveStatus("in_progress")} color={theme.inProgressText} />
+          <FilterBtn label="Awaiting" active={activeStatus === "awaiting_customer"} onClick={() => setActiveStatus("awaiting_customer")} color={theme.awaitingText} />
+          <FilterBtn label="Resolved" active={activeStatus === "resolved"} onClick={() => setActiveStatus("resolved")} color={theme.resolvedText} />
+          <FilterBtn label="Closed" active={activeStatus === "closed"} onClick={() => setActiveStatus("closed")} color={theme.closedText} />
+          <FilterBtn label="Rejected" active={activeStatus === "rejected"} onClick={() => setActiveStatus("rejected")} color={theme.rejectedText} />
 
           <Box sx={{ width: 1, height: 24, bgcolor: theme.border, display: { xs: "none", sm: "block" } }} />
 
-          <FilterBtn label="🔴 Urgent" active={activePriority === "Urgent"} onClick={() => setActivePriority(activePriority === "Urgent" ? "all" : "Urgent")} color={theme.urgentText} />
-          <FilterBtn label="🟠 High" active={activePriority === "High"} onClick={() => setActivePriority(activePriority === "High" ? "all" : "High")} color={theme.highText} />
-          <FilterBtn label="🟡 Medium" active={activePriority === "Medium"} onClick={() => setActivePriority(activePriority === "Medium" ? "all" : "Medium")} color={theme.mediumText} />
-          <FilterBtn label="🟢 Low" active={activePriority === "Low"} onClick={() => setActivePriority(activePriority === "Low" ? "all" : "Low")} color={theme.lowText} />
+          <FilterBtn label="🔴 Urgent" active={activePriority === "urgent"} onClick={() => setActivePriority(activePriority === "urgent" ? "all" : "urgent")} color={theme.urgentText} />
+          <FilterBtn label="🟠 High" active={activePriority === "high"} onClick={() => setActivePriority(activePriority === "high" ? "all" : "high")} color={theme.highText} />
+          <FilterBtn label="🟡 Medium" active={activePriority === "medium"} onClick={() => setActivePriority(activePriority === "medium" ? "all" : "medium")} color={theme.mediumText} />
+          <FilterBtn label="🟢 Low" active={activePriority === "low"} onClick={() => setActivePriority(activePriority === "low" ? "all" : "low")} color={theme.lowText} />
 
           <Box sx={{ flex: 1, minWidth: 180 }}>
             <TextField
               size="small"
-              placeholder="Search by title, name, order ID, product..."
+              placeholder="Search subject, customer, order ID, product..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               InputProps={{
@@ -528,7 +718,7 @@ export default function ComplaintView() {
           </Box>
 
           <Button
-            onClick={fetchComplaints}
+            onClick={() => { fetchComplaints(); fetchStats(); }}
             size="small"
             startIcon={<Box component="span" sx={{ fontSize: "0.9rem" }}>↺</Box>}
             sx={{
@@ -572,11 +762,11 @@ export default function ComplaintView() {
         ) : (
           <Grid container spacing={3}>
             {filtered.map((c, i) => {
-              const isAnon = !c.complainantName || !c.complainantName.trim();
+              const isAnon = !c.customer_name;
               return (
                 <Grid item xs={12} sm={6} md={4} key={c._id}>
                   <Card
-                    onClick={() => setSelected(c)}
+                    onClick={() => openDetail(c)}
                     sx={{
                       borderRadius: 3,
                       border: `1px solid ${theme.border}`,
@@ -598,17 +788,15 @@ export default function ComplaintView() {
                       },
                     }}
                   >
-                    {/* Priority bar */}
                     <Box sx={{ height: 4, bgcolor: priorityBarColor(c.priority) }} />
 
                     <CardContent sx={{ p: 2.5 }}>
-                      {/* Title + status */}
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1} mb={1}>
                         <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: theme.textPrimary, lineHeight: 1.3, flex: 1 }}>
-                          {c.title || "Untitled"}
+                          {c.subject || "Untitled"}
                         </Typography>
                         <Chip
-                          label={c.status}
+                          label={STATUS_LABELS[c.status] || c.status}
                           size="small"
                           sx={{
                             ...statusStyle(c.status),
@@ -622,7 +810,6 @@ export default function ComplaintView() {
                         />
                       </Stack>
 
-                      {/* Description */}
                       <Typography
                         sx={{
                           color: theme.textSecondary,
@@ -638,19 +825,18 @@ export default function ComplaintView() {
                         {c.description || "No description provided."}
                       </Typography>
 
-                      {/* Order ID & Product Info (new fields) */}
-                      {(c.orderId || c.productName) && (
+                      {(c.razorpay_order_id || c.product_name) && (
                         <Stack direction="row" gap={0.8} mb={1.5} flexWrap="wrap">
-                          {c.orderId && (
+                          {c.razorpay_order_id && (
                             <Chip
-                              label={`Order: ${c.orderId}`}
+                              label={`Order: ${c.razorpay_order_id}`}
                               size="small"
                               sx={{ bgcolor: theme.primaryBg, color: theme.primary, fontWeight: 500, fontSize: "0.68rem", height: 20 }}
                             />
                           )}
-                          {c.productName && (
+                          {c.product_name && (
                             <Chip
-                              label={`Product: ${c.productName}`}
+                              label={`Product: ${c.product_name}`}
                               size="small"
                               sx={{ bgcolor: theme.primaryBg, color: theme.primary, fontWeight: 500, fontSize: "0.68rem", height: 20 }}
                             />
@@ -658,15 +844,14 @@ export default function ComplaintView() {
                         </Stack>
                       )}
 
-                      {/* Tags */}
                       <Stack direction="row" gap={0.8} mb={2} flexWrap="wrap">
                         <Chip
-                          label={c.category || "General"}
+                          label={CATEGORY_LABELS[c.category] || c.category}
                           size="small"
                           sx={{ bgcolor: theme.primaryBg, color: theme.primary, fontWeight: 600, fontSize: "0.68rem", height: 20, border: `1px solid ${theme.primaryBgDeep}` }}
                         />
                         <Chip
-                          label={`${getPriorityIcon(c.priority)} ${c.priority}`}
+                          label={`${getPriorityIcon(c.priority)} ${PRIORITY_LABELS[c.priority] || c.priority}`}
                           size="small"
                           sx={{ ...priorityStyle(c.priority), fontWeight: 700, fontSize: "0.68rem", height: 20 }}
                         />
@@ -674,7 +859,6 @@ export default function ComplaintView() {
 
                       <Divider sx={{ borderColor: theme.border, mb: 2 }} />
 
-                      {/* Complainant footer */}
                       <Stack direction="row" alignItems="center" gap={1.2}>
                         <Avatar
                           sx={{
@@ -684,7 +868,7 @@ export default function ComplaintView() {
                             fontWeight: 700,
                           }}
                         >
-                          {getInitials(c.complainantName)}
+                          {getInitials(c.customer_name)}
                         </Avatar>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography
@@ -698,19 +882,18 @@ export default function ComplaintView() {
                               textOverflow: "ellipsis",
                             }}
                           >
-                            {isAnon ? "Anonymous" : c.complainantName}
+                            {isAnon ? "Anonymous" : c.customer_name}
                           </Typography>
                           <Typography sx={{ fontSize: "0.68rem", color: theme.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {c.complainantEmail || c.complainantPhone || "No contact info"}
+                            {c.customer_email || c.customer_phone || "No contact info"}
                           </Typography>
                         </Box>
                         <Typography sx={{ fontSize: "0.67rem", color: theme.textMuted, flexShrink: 0 }}>
-                          {formatDate(c.createdAt)}
+                          {formatDate(c.created_at)}
                         </Typography>
                       </Stack>
 
-                      {/* Update Status Button - Only show for pending or in review complaints */}
-                      {(c.status === "Pending" || c.status === "In Review") && (
+                      {["open", "in_progress", "awaiting_customer"].includes(c.status) && (
                         <Button
                           fullWidth
                           variant="outlined"
@@ -749,35 +932,29 @@ export default function ComplaintView() {
         open={!!selected}
         onClose={() => setSelected(null)}
         fullWidth
-        maxWidth="sm"
+        maxWidth="md"
         PaperProps={{
-          sx: {
-            borderRadius: 4,
-            overflow: "hidden",
-            boxShadow: "0 24px 64px rgba(21,101,192,0.18)",
-          },
+          sx: { borderRadius: 4, overflow: "hidden", boxShadow: "0 24px 64px rgba(21,101,192,0.18)" },
         }}
       >
         {selected && (
           <>
-            {/* Dialog header */}
             <Box sx={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})`, px: 3, py: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
-                <Box>
+                <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontFamily: "'Georgia', serif", fontSize: "1.25rem", fontWeight: 700, color: "#fff", lineHeight: 1.2, mb: 1 }}>
-                    {selected.title || "Untitled Complaint"}
+                    {selected.subject || "Untitled Complaint"}
                   </Typography>
                   <Stack direction="row" gap={1} flexWrap="wrap">
-                    <Chip label={selected.status} size="small" sx={{ ...statusStyle(selected.status), fontWeight: 700, fontSize: "0.65rem", height: 22, border: "1px solid" }} />
-                    <Chip label={`${getPriorityIcon(selected.priority)} ${selected.priority}`} size="small" sx={{ ...priorityStyle(selected.priority), fontWeight: 700, fontSize: "0.65rem", height: 22 }} />
-                    <Chip label={selected.category} size="small" sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "#fff", fontWeight: 600, fontSize: "0.65rem", height: 22 }} />
+                    <Chip label={STATUS_LABELS[selected.status]} size="small" sx={{ ...statusStyle(selected.status), fontWeight: 700, fontSize: "0.65rem", height: 22, border: "1px solid" }} />
+                    <Chip label={`${getPriorityIcon(selected.priority)} ${PRIORITY_LABELS[selected.priority]}`} size="small" sx={{ ...priorityStyle(selected.priority), fontWeight: 700, fontSize: "0.65rem", height: 22 }} />
+                    <Chip label={CATEGORY_LABELS[selected.category] || selected.category} size="small" sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "#fff", fontWeight: 600, fontSize: "0.65rem", height: 22 }} />
                   </Stack>
                 </Box>
-                {(selected.status === "Pending" || selected.status === "In Review") && (
+                {["open", "in_progress", "awaiting_customer"].includes(selected.status) && (
                   <Button
                     variant="contained"
                     onClick={() => {
-                      setSelected(null);
                       setSelectedForUpdate(selected);
                       setStatusUpdateOpen(true);
                     }}
@@ -804,55 +981,151 @@ export default function ComplaintView() {
                 </Typography>
               </Box>
 
+              {/* Attachments */}
+              {Array.isArray(selected.attachments) && selected.attachments.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography sx={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.8px", color: theme.textMuted, fontWeight: 600, mb: 1 }}>
+                    Attachments ({selected.attachments.length})
+                  </Typography>
+                  <Stack direction="row" gap={1} flexWrap="wrap">
+                    {selected.attachments.map((a, i) => (
+                      <a
+                        key={i}
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          textDecoration: "none",
+                          fontSize: "0.75rem",
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          background: theme.primaryBg,
+                          color: theme.primary,
+                          fontWeight: 600,
+                        }}
+                      >
+                        📎 {a.name || `File ${i + 1}`}
+                      </a>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+
               <Divider sx={{ borderColor: theme.border, mb: 3 }} />
 
-              {/* Order & Product Details (new section) */}
-              {(selected.orderId || selected.productName) && (
+              {/* Order & Product */}
+              {(selected.razorpay_order_id || selected.product_name) && (
                 <>
                   <Typography sx={{ fontFamily: "'Georgia', serif", fontSize: "0.95rem", fontWeight: 700, color: theme.textPrimary, mb: 2 }}>
                     Order Information
                   </Typography>
-                  {selected.orderId && <DetailRow icon="📦" label="Order ID" value={selected.orderId} />}
-                  {selected.productName && <DetailRow icon="🏷️" label="Product Name" value={selected.productName} />}
+                  {selected.razorpay_order_id && <DetailRow icon="📦" label="Razorpay Order ID" value={selected.razorpay_order_id} />}
+                  {selected.order_amount && <DetailRow icon="💰" label="Order Amount" value={`₹${selected.order_amount}`} />}
+                  {selected.order_status && <DetailRow icon="📊" label="Order Status" value={selected.order_status} />}
+                  {selected.product_name && <DetailRow icon="🏷️" label="Product Name" value={selected.product_name} />}
                   <Divider sx={{ borderColor: theme.border, mb: 3 }} />
                 </>
               )}
 
-              {/* Complainant details */}
+              {/* Customer */}
               <Typography sx={{ fontFamily: "'Georgia', serif", fontSize: "0.95rem", fontWeight: 700, color: theme.textPrimary, mb: 2 }}>
-                Complainant Details
+                Customer Details
               </Typography>
-
-              <DetailRow icon="👤" label="Name" value={selected.complainantName || "Anonymous"} />
-              <DetailRow icon="✉️" label="Email" value={selected.complainantEmail} />
-              <DetailRow icon="📞" label="Phone" value={selected.complainantPhone} />
-
+              <DetailRow icon="👤" label="Name" value={selected.customer_name || "Anonymous"} />
+              <DetailRow icon="✉️" label="Email" value={selected.customer_email} />
+              <DetailRow icon="📞" label="Phone" value={selected.customer_phone} />
               <Divider sx={{ borderColor: theme.border, mb: 3, mt: 1 }} />
 
+              {/* Complaint info */}
               <Typography sx={{ fontFamily: "'Georgia', serif", fontSize: "0.95rem", fontWeight: 700, color: theme.textPrimary, mb: 2 }}>
                 Complaint Info
               </Typography>
-
-              <DetailRow icon="🏷️" label="Category" value={selected.category} />
-              <DetailRow icon="⚡" label="Priority" value={selected.priority} />
-              <DetailRow icon="📅" label="Created" value={formatDate(selected.createdAt)} />
-              <DetailRow icon="🔄" label="Last Updated" value={formatDate(selected.updatedAt)} />
-
-              {selected.resolvedAt && (
-                <DetailRow icon="✅" label="Resolved/Rejected On" value={formatDate(selected.resolvedAt)} />
+              <DetailRow icon="🏷️" label="Category" value={CATEGORY_LABELS[selected.category] || selected.category} />
+              <DetailRow icon="⚡" label="Priority" value={PRIORITY_LABELS[selected.priority] || selected.priority} />
+              <DetailRow icon="📅" label="Created" value={formatDate(selected.created_at)} />
+              <DetailRow icon="🔄" label="Last Updated" value={formatDate(selected.updated_at)} />
+              {selected.resolved_at && (
+                <DetailRow icon="✅" label="Resolved On" value={formatDate(selected.resolved_at)} />
               )}
-
-              {selected.adminNotes && (
+              {selected.admin_notes && (
                 <>
                   <Divider sx={{ borderColor: theme.border, mb: 3, mt: 1 }} />
-                  <DetailRow icon="📝" label="Admin Notes" value={selected.adminNotes} />
+                  <DetailRow icon="📝" label="Admin Notes" value={selected.admin_notes} />
                 </>
               )}
 
-              {selected.resolution && (
+              {/* ── Message thread ── */}
+              {Array.isArray(selected.messages) && selected.messages.length > 0 && (
                 <>
-                  <Divider sx={{ borderColor: theme.border, mb: 3, mt: 1 }} />
-                  <DetailRow icon="💬" label="Resolution Details" value={selected.resolution} />
+                  <Divider sx={{ borderColor: theme.border, my: 3 }} />
+                  <Typography sx={{ fontFamily: "'Georgia', serif", fontSize: "0.95rem", fontWeight: 700, color: theme.textPrimary, mb: 2 }}>
+                    Conversation ({selected.messages.length})
+                  </Typography>
+                  <Stack gap={1.5} sx={{ mb: 2 }}>
+                    {selected.messages.map((m) => {
+                      const isAdmin = m.sender_role === "admin";
+                      return (
+                        <Box
+                          key={m._id}
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            bgcolor: isAdmin ? theme.primaryBg : theme.offWhite,
+                            border: `1px solid ${isAdmin ? theme.primaryBgDeep : theme.border}`,
+                          }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={0.5}>
+                            <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: theme.textPrimary }}>
+                              {isAdmin ? "🛡️ Admin" : "👤 Customer"} · {m.sender_name || (isAdmin ? "Admin" : "Customer")}
+                            </Typography>
+                            <Typography sx={{ fontSize: "0.65rem", color: theme.textMuted }}>
+                              {formatDateTime(m.created_at)}
+                            </Typography>
+                          </Stack>
+                          <Typography sx={{ fontSize: "0.83rem", color: theme.textPrimary, lineHeight: 1.5 }}>
+                            {m.message}
+                          </Typography>
+                          {Array.isArray(m.attachments) && m.attachments.length > 0 && (
+                            <Stack direction="row" gap={0.8} mt={1} flexWrap="wrap">
+                              {m.attachments.map((a, i) => (
+                                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                                  style={{ fontSize: "0.7rem", color: theme.primary, fontWeight: 600 }}>
+                                  📎 {a.name || `File ${i + 1}`}
+                                </a>
+                              ))}
+                            </Stack>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </>
+              )}
+
+              {/* ── Reply box ── */}
+              {!["closed", "rejected"].includes(selected.status) && (
+                <>
+                  <Divider sx={{ borderColor: theme.border, my: 2 }} />
+                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: theme.textPrimary, mb: 1 }}>
+                    Reply as Admin
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    placeholder="Type your reply to the customer..."
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    sx={{ mb: 1.5 }}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleReply}
+                    disabled={replying || !replyText.trim()}
+                    sx={{ textTransform: "none" }}
+                  >
+                    {replying ? <CircularProgress size={20} /> : "Send Reply"}
+                  </Button>
                 </>
               )}
             </DialogContent>
@@ -889,7 +1162,7 @@ export default function ComplaintView() {
         loading={updating}
       />
 
-      {/* ── Snackbar ───────────────────────────────────────────── */}
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
